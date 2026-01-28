@@ -14,9 +14,9 @@ contains() {
 }
 
 @test "should create prometheus configurations on start callback" {
-  prom_add "8290" "experiment" "84858" "node-1" "codex"
+  prom_add "8290" "experiment" "84858" "node-1" "storage"
 
-  config_file="${_prom_output}/8290-experiment-84858-node-1-codex.json"
+  config_file="${_prom_output}/8290-experiment-84858-node-1-storage.json"
 
   assert [ -f "${config_file}" ]
 
@@ -24,16 +24,16 @@ contains() {
   assert contains "${config_file}" '"job": "experiment"'
   assert contains "${config_file}" '"experiment_id": "84858"'
   assert contains "${config_file}" '"node": "node-1"'
-  assert contains "${config_file}" '"node_type": "codex"'
+  assert contains "${config_file}" '"node_type": "storage"'
 }
 
 @test "should remove prometheus configurations on stop callback" {
-  prom_add "8290" "experiment" "84858" "node-1" "codex"
+  prom_add "8290" "experiment" "84858" "node-1" "storage"
 
-  config_file="${_prom_output}/8290-experiment-84858-node-1-codex.json"
+  config_file="${_prom_output}/8290-experiment-84858-node-1-storage.json"
   assert [ -f "${config_file}" ]
 
-  prom_remove "8290" "experiment" "84858" "node-1" "codex"
+  prom_remove "8290" "experiment" "84858" "node-1" "storage"
 
   assert [ ! -f "${config_file}" ]
 }

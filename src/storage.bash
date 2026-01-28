@@ -8,20 +8,20 @@ source "${LIB_SRC}/utils.bash"
 # shellcheck source=./src/procmon.bash
 source "${LIB_SRC}/procmon.bash"
 
-# Codex binary
-if [ -z "${CODEX_BINARY}" ]; then
-  _cdx_binary="$(command -v codex)" || true
+# Logos Storage binary
+if [ -z "${STORAGE_BINARY}" ]; then
+  _cdx_binary="$(command -v storage)" || true
 else
-  _cdx_binary="${CODEX_BINARY}"
+  _cdx_binary="${STORAGE_BINARY}"
 fi
 
 if [ ! -f "${_cdx_binary}" ]; then
-  echoerr "Error: no valid Codex binary found."\
- "Set CODEX_BINARY to point to a valid Codex binary."
+  echoerr "Error: no valid Logos Storage binary found."\
+ "Set STORAGE_BINARY to point to a valid Logos Storage binary."
   exit 1
 fi
 
-echoerr "[codex] Using binary at ${_cdx_binary}"
+echoerr "[storage] Using binary at ${_cdx_binary}"
 
 # Custom prefix for timing logs
 _cdx_timing_prefix=""
@@ -32,14 +32,14 @@ _cdx_base_api_port=8080
 _cdx_base_disc_port=8190
 _cdx_base_metrics_port=8290
 _cdx_node_start_timeout=30
-# Default options set for Codex nodes
+# Default options set for Logos Storage nodes
 _cdx_defaultopts=()
-# Log level for Codex nodes.
+# Log level for Logos Storage nodes.
 _cdx_log_level="INFO"
 
-echoerr "[codex] Node log level is ${_cdx_log_level}"
+echoerr "[storage] Node log level is ${_cdx_log_level}"
 
-# PID array for known Codex node processes
+# PID array for known Logos Storage node processes
 # FIXME: right now only processes destroyed with cdx_destroy_node are removed from
 #   this array.
 declare -A _cdx_pids
@@ -53,9 +53,9 @@ cdx_set_outputs() {
   _cdx_downloads="${_cdx_output}/downloads"
   # SHA1 of uploaded files, per node. File names are CIDs
   _cdx_uploads="${_cdx_output}/uploads"
-  # Codex node logs, per node
+  # Logos Storage node logs, per node
   _cdx_logs="${_cdx_output}/logs"
-  # Codex data directories, per node
+  # Logos Storage data directories, per node
   _cdx_data="${_cdx_output}/data"
   # Partial timings, per operation per node
   _cdx_timing_partials="${_cdx_output}/timing"
@@ -129,14 +129,14 @@ cdx_cmdline() {
 
   # shellcheck disable=SC2140
   echo "${cdx_cmd}"\
- "--data-dir=${_cdx_data}/codex-${node_index} --api-port=$(_cdx_api_port "$node_index")"\
+ "--data-dir=${_cdx_data}/storage-${node_index} --api-port=$(_cdx_api_port "$node_index")"\
  "--disc-port=$(_cdx_disc_port "$node_index") '--log-level=${_cdx_log_level}'"
 }
 
 cdx_get_spr() {
   local node_index="$1" spr
 
-  spr=$(curl --silent --fail "http://localhost:$(_cdx_api_port "$node_index")/api/codex/v1/debug/info" | grep -oe 'spr:[^"]\+')
+  spr=$(curl --silent --fail "http://localhost:$(_cdx_api_port "$node_index")/api/storage/v1/debug/info" | grep -oe 'spr:[^"]\+')
   if [[ -z "$spr" ]]; then
     echoerr "Error: unable to get SPR for node $node_index"
     return 1
@@ -151,13 +151,13 @@ cdx_launch_node() {
   _cdx_init_global_outputs || return 1
   _cdx_init_node_outputs "${node_index}" || return 1
 
-  local codex_cmd
-  codex_cmd=$(cdx_cmdline "$@") || return 1
+  local storage_cmd
+  storage_cmd=$(cdx_cmdline "$@") || return 1
 
   cmd_array=()
-  IFS=' ' read -r -a cmd_array <<<"$codex_cmd"
+  IFS=' ' read -r -a cmd_array <<<"$storage_cmd"
 
-  pm_async "bash" "-c" "exec ${cmd_array[*]} &> ${_cdx_logs}/codex-${node_index}.log" -%- "codex" "${node_index}"
+  pm_async "bash" "-c" "exec ${cmd_array[*]} &> ${_cdx_logs}/storage-${node_index}.log" -%- "storage" "${node_index}"
   _cdx_pids[$node_index]=$!
 
   cdx_ensure_ready "$node_index"
@@ -166,7 +166,7 @@ cdx_launch_node() {
 cdx_launch_network() {
   local node_count="$1" bootstrap_spr
   if [[ "$node_count" -lt 2 ]]; then
-    echoerr "Error: a Codex network needs at least 2 nodes"
+    echoerr "Error: a Logos Storage network needs at least 2 nodes"
     return 1
   fi
 
@@ -199,8 +199,8 @@ cdx_destroy_node() {
   unset "_cdx_pids[$node_index]"
 
   if [ "$wipe_data" = true ]; then
-    rm -rf "${_cdx_data}/codex-${node_index}"
-    rm -rf "${_cdx_logs}/codex-${node_index}.log"
+    rm -rf "${_cdx_data}/storage-${node_index}"
+    rm -rf "${_cdx_logs}/storage-${node_index}.log"
   fi
 }
 
@@ -209,12 +209,12 @@ cdx_ensure_ready() {
   echoerr "Waiting ${timeout} seconds for node ${node_index} to be ready."
   while true; do
     if cdx_get_spr "$node_index" 2> /dev/null; then
-      echoerr "Codex node $node_index is ready."
+      echoerr "Logos Storage node $node_index is ready."
       return 0
     fi
 
     if (( SECONDS - start > timeout )); then
-      echoerr "Codex node $node_index did not start within ${timeout} seconds."
+      echoerr "Logos Storage node $node_index did not start within ${timeout} seconds."
       return 1
     fi
 
@@ -226,9 +226,9 @@ _cdx_init_node_outputs() {
   local node_index="$1"
   _ensure_outputs_set || return 1
 
-  mkdir -p "${_cdx_data}/codex-${node_index}" || return 1
-  mkdir -p "${_cdx_downloads}/codex-${node_index}" || return 1
-  mkdir -p "${_cdx_uploads}/codex-${node_index}" || return 1
+  mkdir -p "${_cdx_data}/storage-${node_index}" || return 1
+  mkdir -p "${_cdx_downloads}/storage-${node_index}" || return 1
+  mkdir -p "${_cdx_uploads}/storage-${node_index}" || return 1
 }
 
 # XXX: output initialization is a bit of a pain. Right now it's
@@ -259,12 +259,12 @@ cdx_upload_file() {
   echoerr "Uploading file ${filename} to node ${node_index}"
 
   cid=$(curl --silent --fail\
-    -XPOST "http://localhost:$(_cdx_api_port "$node_index")/api/codex/v1/data"\
+    -XPOST "http://localhost:$(_cdx_api_port "$node_index")/api/storage/v1/data"\
     -T "${filename}") || return 1
 
   echoerr "Upload SHA-1 is ${content_sha1}"
 
-  echo "${content_sha1}" > "${_cdx_uploads}/codex-${node_index}/${cid}.sha1"
+  echo "${content_sha1}" > "${_cdx_uploads}/storage-${node_index}/${cid}.sha1"
   echo "${cid}"
 }
 
@@ -277,9 +277,9 @@ cdx_download_file() {
   # puts the most recent entries first, while at the same time breaking ties arbitrarily
   # for entries that happen within the same second.
   { time curl --silent --fail\
-    -XGET "http://localhost:$(_cdx_api_port "$node_index")/api/codex/v1/data/$cid/network/stream"\
-    -o "${_cdx_downloads}/codex-${node_index}/$cid" ; } 2> \
-    "${_cdx_timing_partials}/codex-${node_index}-${timestamp}-${RANDOM}.csv"
+    -XGET "http://localhost:$(_cdx_api_port "$node_index")/api/storage/v1/data/$cid/network/stream"\
+    -o "${_cdx_downloads}/storage-${node_index}/$cid" ; } 2> \
+    "${_cdx_timing_partials}/storage-${node_index}-${timestamp}-${RANDOM}.csv"
 }
 
 cdx_download_file_async() {
@@ -288,12 +288,12 @@ cdx_download_file_async() {
 
 cdx_upload_sha1() {
   local node_index="$1" cid="$2"
-  cat "${_cdx_uploads}/codex-${node_index}/${cid}.sha1" || return 1
+  cat "${_cdx_uploads}/storage-${node_index}/${cid}.sha1" || return 1
 }
 
 cdx_download_sha1() {
   local node_index="$1" cid="$2"
-  sha1 "${_cdx_downloads}/codex-${node_index}/$cid" || return 1
+  sha1 "${_cdx_downloads}/storage-${node_index}/$cid" || return 1
 }
 
 cdx_check_download() {
