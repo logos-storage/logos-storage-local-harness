@@ -9,7 +9,7 @@ scrape_configs:
     static_configs:
       - targets: ['host.docker.internal:9090']
 
-  - job_name: 'codex-metrics'
+  - job_name: 'storage-metrics'
     file_sd_configs:
       - files:
           - '/etc/prometheus/targets/*.json'

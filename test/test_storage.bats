@@ -4,25 +4,25 @@ setup() {
   load test_helper/common_setup
   common_setup
 
-  # shellcheck source=./src/codex.bash
-  source "${LIB_SRC}/codex.bash"
+  # shellcheck source=./src/storage.bash
+  source "${LIB_SRC}/storage.bash"
 
   pm_set_outputs "${TEST_OUTPUTS}/pm"
-  cdx_set_outputs "${TEST_OUTPUTS}/codex"
+  cdx_set_outputs "${TEST_OUTPUTS}/storage"
 }
 
-@test "should generate the correct Codex command line for node 0" {
+@test "should generate the correct Logos Storage command line for node 0" {
   # shellcheck disable=SC2140
   assert_equal "$(cdx_cmdline 0)" "${_cdx_binary} --nat:none"\
-" --data-dir=${_cdx_output}/data/codex-0"\
+" --data-dir=${_cdx_output}/data/storage-0"\
 " --api-port=8080 --disc-port=8190 '--log-level=INFO'"
 }
 
-@test "should generate the correct Codex command line for node 1" {
+@test "should generate the correct Logos Storage command line for node 1" {
   # shellcheck disable=SC2140
   assert_equal "$(cdx_cmdline 1 '--bootstrap-node' 'node-spr')" "${_cdx_binary} --nat:none"\
 " --bootstrap-node=node-spr"\
-" --data-dir=${_cdx_output}/data/codex-1"\
+" --data-dir=${_cdx_output}/data/storage-1"\
 " --api-port=8081 --disc-port=8191 '--log-level=INFO'"
 }
 
@@ -35,16 +35,16 @@ setup() {
   # shellcheck disable=SC2140
   assert_equal "$(cdx_cmdline 0 --metrics)" "${_cdx_binary} --nat:none"\
 " --metrics --metrics-port=8290 --metrics-address=0.0.0.0"\
-" --data-dir=${_cdx_output}/data/codex-0"\
+" --data-dir=${_cdx_output}/data/storage-0"\
 " --api-port=8080 --disc-port=8190 '--log-level=INFO'"
 }
 
-@test "should modify the Codex log-level when specified" {
+@test "should modify the Logos Storage log-level when specified" {
   cdx_set_log_level "DEBUG"
 
   # shellcheck disable=SC2140
   assert_equal "$(cdx_cmdline 0)" "${_cdx_binary} --nat:none"\
-" --data-dir=${_cdx_output}/data/codex-0"\
+" --data-dir=${_cdx_output}/data/storage-0"\
 " --api-port=8080 --disc-port=8190 '--log-level=DEBUG'"
 }
 
@@ -65,7 +65,7 @@ setup() {
 }
 
 @test "should pass readiness check if node is running" {
-  data_dir="${TEST_OUTPUTS}/codex-temp"
+  data_dir="${TEST_OUTPUTS}/storage-temp"
   "${_cdx_binary}" --nat:none --data-dir="$data_dir" &> /dev/null &
   pid=$!
 
@@ -76,23 +76,23 @@ setup() {
   rm -rf "$data_dir"
 }
 
-@test "should launch a Codex node" {
+@test "should launch a Logos Storage node" {
   pm_start
 
   assert cdx_launch_node 0
   assert cdx_ensure_ready 0 3
 
   # We should see a log file and a data directory.
-  assert [ -f "${_cdx_output}/logs/codex-0.log" ]
-  assert [ -d "${_cdx_output}/data/codex-0" ]
+  assert [ -f "${_cdx_output}/logs/storage-0.log" ]
+  assert [ -d "${_cdx_output}/data/storage-0" ]
 
   pid="${_cdx_pids[0]}"
   assert [ -n "$pid" ]
 
   cdx_destroy_node 0 true
 
-  refute [ -d "${_cdx_output}/data/codex-0" ]
-  refute [ -f "${_cdx_output}/logs/codex-0.log" ]
+  refute [ -d "${_cdx_output}/data/storage-0" ]
+  refute [ -f "${_cdx_output}/logs/storage-0.log" ]
   assert [ -z "${_cdx_pids[0]}" ]
 
   # Node should already be dead.
@@ -103,19 +103,19 @@ setup() {
 
 @test "should check downloaded content" {
   mkdir -p "${_cdx_genfiles}"
-  mkdir -p "${_cdx_uploads}/codex-0"
-  mkdir -p "${_cdx_downloads}/codex-1"
+  mkdir -p "${_cdx_uploads}/storage-0"
+  mkdir -p "${_cdx_downloads}/storage-1"
 
   filename=$(cdx_generate_file 10)
 
-  sha1 "$filename" > "${_cdx_uploads}/codex-0/fakecid.sha1"
-  cp "$filename" "${_cdx_downloads}/codex-1/fakecid"
+  sha1 "$filename" > "${_cdx_uploads}/storage-0/fakecid.sha1"
+  cp "$filename" "${_cdx_downloads}/storage-1/fakecid"
 
   # Checks that the file uploaded at 0 matches the file downloaded at 1.
   assert cdx_check_download 0 1 "fakecid"
 }
 
-@test "should upload and synchronously download file from Codex node" {
+@test "should upload and synchronously download file from Logos Storage node" {
   pm_start
 
   assert cdx_launch_node 0
@@ -131,7 +131,7 @@ setup() {
   pm_stop
 }
 
-@test "should upload and asynchronously download file from Codex node" {
+@test "should upload and asynchronously download file from Logos Storage node" {
   pm_start
 
   assert cdx_launch_node 0
@@ -150,11 +150,11 @@ setup() {
   pm_stop
 }
 
-@test "should refuse to launch a Codex network with less than 2 nodes" {
+@test "should refuse to launch a Logos Storage network with less than 2 nodes" {
   refute cdx_launch_network 1
 }
 
-@test "should launch a Codex network and allow uploading and downloading" {
+@test "should launch a Logos Storage network and allow uploading and downloading" {
   pm_start
 
   assert cdx_launch_network 5

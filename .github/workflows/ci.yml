@@ -1,4 +1,4 @@
-name: Lint and Test the Codex Local Harness
+name: Lint and Test the Logos Storage Local Harness
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
       - main
     tags:
       - 'v*.*.*'
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -18,9 +19,8 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Get Codex
-      run: |
-        curl -s https://get.codex.storage/install.sh | bash
+    - name: Get Logos Storage
+      run: ./scripts/get-logos-storage.sh /usr/local/bin
 
     - name: Lint
       uses: ludeeus/action-shellcheck@master

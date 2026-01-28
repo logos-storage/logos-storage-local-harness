@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# k-nodes runs a Codex network with k nodes in which a file is uploaded to
-# node zero and then the remainder k - 1 nodes download it concurrently.
+# k-nodes runs a Logos Storage network with k nodes in which a file is
+# uploaded to node zero and then the remainder k - 1 nodes download it
+# concurrently.
 #
 # Outputs download times to a log file.
 #
