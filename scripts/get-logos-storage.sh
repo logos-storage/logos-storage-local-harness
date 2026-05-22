@@ -54,7 +54,7 @@ main() {
   echo "Latest version: ${version}"
 
   executable_name="logos-storage-${platform}-${version}"
-  download_url="${DOWNLOAD_BASE_URL}/${version}/${executable_name}.tar.gz"
+  download_url="${DOWNLOAD_BASE_URL}/${version}/${executable_name}.zip"
 
   echo "Downloading from: ${download_url}"
 
@@ -62,11 +62,11 @@ main() {
   # shellcheck disable=SC2064
   trap "rm -rf '${tmp_dir}'" EXIT
 
-  curl -sL "$download_url" -o "${tmp_dir}/archive.tar.gz"
+  curl -sL "$download_url" -o "${tmp_dir}/archive.zip"
 
   echo "Extracting..."
-  echo "tar -xzf ${tmp_dir}/archive.tar.gz -C ${tmp_dir}"
-  tar -xzf "${tmp_dir}/archive.tar.gz" -C "$tmp_dir"
+  echo "unzip ${tmp_dir}/archive.zip -d ${tmp_dir}"
+  unzip "${tmp_dir}/archive.zip" -d "$tmp_dir"
 
   mkdir -p "$output_dir"
 
