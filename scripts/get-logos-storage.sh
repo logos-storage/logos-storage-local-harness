@@ -31,7 +31,7 @@ detect_platform() {
 }
 
 fetch_latest_version() {
-  curl -sL "${API_BASE_URL}/releases/latest" |
+  curl -sL "${API_BASE_URL}/releases" |
     grep -oE '"tag_name": "[^"]+"' |
     head -1 |
     sed 's/"tag_name": "//;s/"$//'
@@ -44,7 +44,7 @@ main() {
   echo "Detected platform: ${platform}"
 
   echo "Fetching latest release info..."
-  version=$(fetch_latest_version)
+  version="${STORAGE_VERSION:-$(fetch_latest_version)}"
 
   if [[ -z "$version" ]]; then
     echo "Error: Could not determine latest version" >&2
@@ -54,7 +54,7 @@ main() {
   echo "Latest version: ${version}"
 
   executable_name="logos-storage-${platform}-${version}"
-  download_url="${DOWNLOAD_BASE_URL}/${version}/${executable_name}.tar.gz"
+  download_url="${DOWNLOAD_BASE_URL}/${version}/${executable_name}.zip"
 
   echo "Downloading from: ${download_url}"
 
@@ -62,11 +62,13 @@ main() {
   # shellcheck disable=SC2064
   trap "rm -rf '${tmp_dir}'" EXIT
 
-  curl -sL "$download_url" -o "${tmp_dir}/archive.tar.gz"
+  if ! curl -sL --fail "$download_url" -o "${tmp_dir}/archive.zip"; then
+    echo "Error: failed to download release asset from ${download_url}" >&2
+    exit 1
+  fi
 
   echo "Extracting..."
-  echo "tar -xzf ${tmp_dir}/archive.tar.gz -C ${tmp_dir}"
-  tar -xzf "${tmp_dir}/archive.tar.gz" -C "$tmp_dir"
+  unzip -q "${tmp_dir}/archive.zip" -d "$tmp_dir"
 
   mkdir -p "$output_dir"
 

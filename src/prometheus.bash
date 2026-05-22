@@ -52,5 +52,5 @@ prom_remove() {
     node="$4"\
     node_type="$5"
 
-  rm "${_prom_output}/${metrics_port}-${experiment_type}-${experiment_id}-${node}-${node_type}.json" || true
+  rm -f "${_prom_output}/${metrics_port}-${experiment_type}-${experiment_id}-${node}-${node_type}.json"
 }
