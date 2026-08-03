@@ -23,6 +23,141 @@ fi
 
 echoerr "[storage] Using binary at ${_cdx_binary}"
 
+# Mix pool tool binary (only required when an experiment turns Mix on)
+if [ -n "${MIX_POOL_BINARY:-}" ]; then
+  _cdx_mix_pool_binary="${MIX_POOL_BINARY}"
+fi
+
+if [ -n "${MIX_RELAY_DHT_BINARY:-}" ]; then
+  _cdx_mix_relay_dht_binary="${MIX_RELAY_DHT_BINARY}"
+fi
+
+_cdx_mix_min_pool=4
+
+# Tracked PIDs for relay processes (separate from storage node PIDs)
+declare -A _cdx_mix_relay_pids
+
+cdx_require_binary() {
+  local path="$1" label="$2" env_name="$3"
+  if [ -z "$path" ] || [ ! -x "$path" ]; then
+    echoerr "Error: no valid ${label} binary found." \
+            "Set ${env_name} to point to a compiled ${label}."
+    return 1
+  fi
+}
+
+cdx_require_mix_pool_binary() {
+  cdx_require_binary \
+    "${_cdx_mix_pool_binary:-}" "mix_pool" "MIX_POOL_BINARY"
+}
+
+cdx_require_mix_relay_dht_binary() {
+  cdx_require_binary \
+    "${_cdx_mix_relay_dht_binary:-}" "mix_relay_dht" "MIX_RELAY_DHT_BINARY"
+}
+
+cdx_generate_mix_pool() {
+  local pool_size="$1" pool_dir="$2"
+  cdx_require_mix_pool_binary || return 1
+  rm -rf "${pool_dir}"
+  mkdir -p "${pool_dir}"
+  "${_cdx_mix_pool_binary}" init \
+    --pool="${pool_dir}/pool.json" \
+    --count="${pool_size}" \
+    --outdir="${pool_dir}/relays" >&2 || return 1
+}
+
+cdx_launch_relay() {
+  local relay_index="$1" bootstrap_spr="${2:-}" base_port log_file data_dir cmd backend
+  backend="${CDX_MIX_RELAY_BACKEND:-standalone}"
+
+  if [ -z "${CDX_MIX_POOL_DIR:-}" ]; then
+    echoerr "Error: cdx_launch_relay requires CDX_MIX_POOL_DIR"
+    return 1
+  fi
+
+  _cdx_init_global_outputs || return 1
+
+  base_port="${CDX_RELAY_BASE_PORT:-4242}"
+  data_dir="${CDX_MIX_POOL_DIR}/relays/relay_${relay_index}"
+
+  case "${backend}" in
+    standalone)
+      cdx_require_mix_relay_dht_binary || return 1
+      log_file="${_cdx_logs}/relay-${relay_index}.log"
+      cmd="${_cdx_mix_relay_dht_binary} \
+--data-dir=${data_dir} \
+--listen-ip=127.0.0.1 \
+--listen-port=$((base_port + relay_index)) \
+--no-dht-proxy \
+'--log-level=${_cdx_relay_log_level}'"
+      ;;
+    storage)
+      log_file="${_cdx_logs}/storage-relay-${relay_index}.log"
+      local relay_api_port=$((9080 + relay_index))
+      local relay_disc_port=$((9190 + relay_index))
+      local relay_metrics_port=$((9290 + relay_index))
+      cmd="${_cdx_binary} --nat:none \
+--listen-ip=127.0.0.1 \
+--listen-port=$((base_port + relay_index)) \
+--data-dir=${data_dir} \
+--api-port=${relay_api_port} \
+--disc-port=${relay_disc_port} \
+--metrics-port=${relay_metrics_port} \
+--no-bootstrap-node \
+--mix-enabled \
+--mix-pool=${CDX_MIX_POOL_DIR}/pool.json \
+'--log-level=${_cdx_relay_log_level}'"
+      ;;
+    mix_relay_dht)
+      cdx_require_mix_relay_dht_binary || return 1
+      log_file="${_cdx_logs}/relay-dht-${relay_index}.log"
+      local relay_disc_port=$((9190 + relay_index))
+      cmd="${_cdx_mix_relay_dht_binary} \
+--data-dir=${data_dir} \
+--listen-ip=127.0.0.1 \
+--listen-port=$((base_port + relay_index)) \
+--disc-port=${relay_disc_port} \
+'--log-level=${_cdx_relay_log_level}'"
+      if [[ -n "${bootstrap_spr}" ]]; then
+        cmd="${cmd} --bootstrap-node=${bootstrap_spr}"
+      fi
+      ;;
+    *)
+      echoerr "Error: invalid CDX_MIX_RELAY_BACKEND='${backend}'" \
+        "(use 'standalone', 'storage', or 'mix_relay_dht')"
+      return 1
+      ;;
+  esac
+
+  pm_async "bash" "-c" "exec ${cmd} &> ${log_file}" \
+    -%- "mix-relay (${backend})" "${relay_index}"
+  _cdx_mix_relay_pids[$relay_index]=$!
+
+  # Relay has no HTTP endpoint to poll; brief sleep to let it bind the port.
+  sleep 0.5
+}
+
+cdx_launch_relays() {
+  local count="$1" bootstrap_spr="${2:-}" i backend
+  backend="${CDX_MIX_RELAY_BACKEND:-standalone}"
+  echoerr "Launching ${count} Mix relays (backend: ${backend})..."
+  for i in $(seq 0 "$((count - 1))"); do
+    cdx_launch_relay "$i" "${bootstrap_spr}" || return 1
+  done
+}
+
+cdx_stop_relays() {
+  local idx pid
+  for idx in "${!_cdx_mix_relay_pids[@]}"; do
+    pid="${_cdx_mix_relay_pids[$idx]}"
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -TERM "$pid" 2>/dev/null
+    fi
+  done
+  _cdx_mix_relay_pids=()
+}
+
 # Custom prefix for timing logs
 _cdx_timing_prefix=""
 # Log file where timings are aggregated
@@ -32,17 +167,21 @@ _cdx_base_api_port=8080
 _cdx_base_disc_port=8190
 _cdx_base_metrics_port=8290
 _cdx_node_start_timeout=30
-# Default options set for Logos Storage nodes
 _cdx_defaultopts=()
-# Log level for Logos Storage nodes.
 _cdx_log_level="INFO"
+_cdx_relay_log_level="INFO"
 
 echoerr "[storage] Node log level is ${_cdx_log_level}"
+echoerr "[storage] Relay log level is ${_cdx_relay_log_level}"
 
 # PID array for known Logos Storage node processes
 # FIXME: right now only processes destroyed with cdx_destroy_node are removed from
 #   this array.
 declare -A _cdx_pids
+
+_cdx_bootstrap_pid=""
+_cdx_bootstrap_api_port=7080
+_cdx_bootstrap_disc_port=7190
 
 cdx_set_outputs() {
   # Output folders
@@ -95,8 +234,13 @@ cdx_set_log_level() {
   _cdx_log_level="$1"
 }
 
+cdx_set_relay_log_level() {
+  _cdx_relay_log_level="$1"
+}
+
 cdx_cmdline() {
-  local node_index spr cdx_cmd="${_cdx_binary} --nat:none" opts=("$@")
+  local node_index spr proxy_spr \
+    cdx_cmd="${_cdx_binary} --nat:none --listen-ip=127.0.0.1" opts=("$@")
 
   opts+=("${_cdx_defaultopts[@]}")
 
@@ -111,8 +255,16 @@ cdx_cmdline() {
         spr="${opts[0]}"
         cdx_cmd="${cdx_cmd} --bootstrap-node=$spr"
         ;;
+      --dht-mix-proxy)
+        shift_arr opts
+        proxy_spr="${opts[0]}"
+        cdx_cmd="${cdx_cmd} --dht-mix-proxy=$proxy_spr"
+        ;;
       --metrics)
         cdx_cmd="${cdx_cmd} --metrics --metrics-port=$(_cdx_metrics_port "$node_index") --metrics-address=0.0.0.0"
+        ;;
+      --no-bootstrap-node)
+        cdx_cmd="${cdx_cmd} --no-bootstrap-node"
         ;;
       *)
         echoerr "Error: unknown option $opt"
@@ -127,6 +279,14 @@ cdx_cmdline() {
     return 1
   fi
 
+  if [[ "${CDX_MIX_ENABLED:-}" == "true" ]]; then
+    if [[ -z "${CDX_MIX_POOL_DIR:-}" ]]; then
+      echoerr "Error: CDX_MIX_ENABLED requires CDX_MIX_POOL_DIR"
+      return 1
+    fi
+    cdx_cmd="${cdx_cmd} --mix-enabled --mix-pool=${CDX_MIX_POOL_DIR}/pool.json"
+  fi
+
   # shellcheck disable=SC2140
   echo "${cdx_cmd}"\
  "--data-dir=${_cdx_data}/storage-${node_index} --api-port=$(_cdx_api_port "$node_index")"\
@@ -134,11 +294,12 @@ cdx_cmdline() {
 }
 
 cdx_get_spr() {
-  local node_index="$1" spr
+  local node_index="$1" field="${2:-spr}" spr
 
-  spr=$(curl --silent --fail "http://localhost:$(_cdx_api_port "$node_index")/api/storage/v1/debug/info" | grep -oe 'spr:[^"]\+')
+  spr=$(curl --silent --fail "http://localhost:$(_cdx_api_port "$node_index")/api/storage/v1/debug/info" \
+    | grep -oP '"'"$field"'"\s*:\s*"\K[^"]+')
   if [[ -z "$spr" ]]; then
-    echoerr "Error: unable to get SPR for node $node_index"
+    echoerr "Error: unable to get $field for node $node_index"
     return 1
   fi
 
@@ -163,17 +324,95 @@ cdx_launch_node() {
   cdx_ensure_ready "$node_index"
 }
 
+cdx_launch_bootstrap() {
+  _cdx_init_global_outputs || return 1
+  local data_dir="${_cdx_data}/bootstrap"
+  mkdir -p "${data_dir}" || return 1
+
+  local cmd
+  cmd="${_cdx_binary} --nat:none --listen-ip=127.0.0.1 \
+--no-bootstrap-node \
+--data-dir=${data_dir} \
+--api-port=${_cdx_bootstrap_api_port} \
+--disc-port=${_cdx_bootstrap_disc_port} \
+'--log-level=${_cdx_log_level}'"
+
+  pm_async "bash" "-c" "exec ${cmd} &> ${_cdx_logs}/bootstrap.log" \
+    -%- "storage" "bootstrap"
+  _cdx_bootstrap_pid=$!
+
+  local start="${SECONDS}"
+  while true; do
+    if cdx_get_bootstrap_spr 2> /dev/null > /dev/null; then
+      echoerr "Bootstrap node is ready."
+      return 0
+    fi
+    if (( SECONDS - start > _cdx_node_start_timeout )); then
+      echoerr "Bootstrap node did not start within ${_cdx_node_start_timeout} seconds."
+      return 1
+    fi
+    sleep 0.2
+  done
+}
+
+cdx_get_bootstrap_spr() {
+  local spr
+  spr=$(curl --silent --fail \
+    "http://localhost:${_cdx_bootstrap_api_port}/api/storage/v1/debug/info" \
+    | grep -oP '"spr"\s*:\s*"\K[^"]+')
+  if [[ -z "$spr" ]]; then
+    echoerr "Error: unable to get spr for bootstrap node"
+    return 1
+  fi
+  echo "${spr}"
+}
+
+cdx_stop_bootstrap() {
+  if [[ -n "${_cdx_bootstrap_pid}" ]] && kill -0 "${_cdx_bootstrap_pid}" 2>/dev/null; then
+    kill -TERM "${_cdx_bootstrap_pid}" 2>/dev/null
+  fi
+  _cdx_bootstrap_pid=""
+}
+
 cdx_launch_network() {
-  local node_count="$1" bootstrap_spr
+  local node_count="$1" bootstrap_spr="${2:-}"
+  local mix_node_spr extra_args=()
   if [[ "$node_count" -lt 2 ]]; then
     echoerr "Error: a Logos Storage network needs at least 2 nodes"
     return 1
   fi
+  if [[ -z "${bootstrap_spr}" ]]; then
+    echoerr "Error: cdx_launch_network requires a bootstrap SPR (2nd arg)"
+    return 1
+  fi
 
-  cdx_launch_node 0 || return 1
-  bootstrap_spr=$(cdx_get_spr 0) || return 1
+  cdx_launch_node 0 --bootstrap-node "${bootstrap_spr}" || return 1
+
+  if [[ "${CDX_MIX_ENABLED:-}" == "true" ]]; then
+    if [[ "${CDX_MIX_RELAY_BACKEND:-standalone}" == "mix_relay_dht" ]]; then
+      local relay_count="${#_cdx_mix_relay_pids[@]}" i mix_node_spr_file tries
+      for i in $(seq 0 "$((relay_count - 1))"); do
+        mix_node_spr_file="${CDX_MIX_POOL_DIR}/relays/relay_${i}/mix_node.spr"
+        tries=0
+        while [[ ! -s "${mix_node_spr_file}" && $tries -lt 60 ]]; do
+          sleep 0.2
+          tries=$((tries + 1))
+        done
+        if [[ ! -s "${mix_node_spr_file}" ]]; then
+          echoerr "Error: mix_relay_dht ${i} did not write ${mix_node_spr_file}"
+          return 1
+        fi
+        mix_node_spr=$(cat "${mix_node_spr_file}")
+        extra_args+=("--dht-mix-proxy" "$mix_node_spr")
+      done
+    else
+      mix_node_spr=$(cdx_get_spr 0 providerRecord) || return 1
+      extra_args+=("--dht-mix-proxy" "$mix_node_spr")
+    fi
+  fi
+
   for i in $(seq 1 "$((node_count - 1))"); do
-    cdx_launch_node "$i" "--bootstrap-node" "$bootstrap_spr" || return 1
+    cdx_launch_node "$i" "--bootstrap-node" "$bootstrap_spr" "${extra_args[@]}" || return 1
   done
   return 0
 }

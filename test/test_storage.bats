@@ -13,14 +13,14 @@ setup() {
 
 @test "should generate the correct Logos Storage command line for node 0" {
   # shellcheck disable=SC2140
-  assert_equal "$(cdx_cmdline 0)" "${_cdx_binary} --nat:none"\
+  assert_equal "$(cdx_cmdline 0)" "${_cdx_binary} --nat:none --listen-ip=127.0.0.1"\
 " --data-dir=${_cdx_output}/data/storage-0"\
 " --api-port=8080 --disc-port=8190 '--log-level=INFO'"
 }
 
 @test "should generate the correct Logos Storage command line for node 1" {
   # shellcheck disable=SC2140
-  assert_equal "$(cdx_cmdline 1 '--bootstrap-node' 'node-spr')" "${_cdx_binary} --nat:none"\
+  assert_equal "$(cdx_cmdline 1 '--bootstrap-node' 'node-spr')" "${_cdx_binary} --nat:none --listen-ip=127.0.0.1"\
 " --bootstrap-node=node-spr"\
 " --data-dir=${_cdx_output}/data/storage-1"\
 " --api-port=8081 --disc-port=8191 '--log-level=INFO'"
@@ -33,7 +33,7 @@ setup() {
 
 @test "should generate metrics options when metrics enabled for node" {
   # shellcheck disable=SC2140
-  assert_equal "$(cdx_cmdline 0 --metrics)" "${_cdx_binary} --nat:none"\
+  assert_equal "$(cdx_cmdline 0 --metrics)" "${_cdx_binary} --nat:none --listen-ip=127.0.0.1"\
 " --metrics --metrics-port=8290 --metrics-address=0.0.0.0"\
 " --data-dir=${_cdx_output}/data/storage-0"\
 " --api-port=8080 --disc-port=8190 '--log-level=INFO'"
@@ -43,7 +43,7 @@ setup() {
   cdx_set_log_level "DEBUG"
 
   # shellcheck disable=SC2140
-  assert_equal "$(cdx_cmdline 0)" "${_cdx_binary} --nat:none"\
+  assert_equal "$(cdx_cmdline 0)" "${_cdx_binary} --nat:none --listen-ip=127.0.0.1"\
 " --data-dir=${_cdx_output}/data/storage-0"\
 " --api-port=8080 --disc-port=8190 '--log-level=DEBUG'"
 }
@@ -157,7 +157,10 @@ setup() {
 @test "should launch a Logos Storage network and allow uploading and downloading" {
   pm_start
 
-  assert cdx_launch_network 5
+  assert cdx_launch_bootstrap
+  bootstrap_spr=$(cdx_get_bootstrap_spr)
+
+  assert cdx_launch_network 5 "$bootstrap_spr"
 
   filename=$(cdx_generate_file 10)
   cid=$(cdx_upload_file 0 "$filename")
@@ -182,7 +185,10 @@ setup() {
 
   cdx_log_timings_start "${_cdx_output}/experiment-0.csv" "experiment-0,100MB"
 
-  assert cdx_launch_network 5
+  assert cdx_launch_bootstrap
+  bootstrap_spr=$(cdx_get_bootstrap_spr)
+
+  assert cdx_launch_network 5 "$bootstrap_spr"
 
   filename=$(cdx_generate_file 10)
   cid=$(cdx_upload_file 0 "$filename")
@@ -223,5 +229,6 @@ setup() {
 }
 
 teardown() {
+  cdx_stop_bootstrap
   clean_outputs
 }
