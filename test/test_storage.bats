@@ -13,17 +13,17 @@ setup() {
 
 @test "should generate the correct Logos Storage command line for node 0" {
   # shellcheck disable=SC2140
-  assert_equal "$(cdx_cmdline 0)" "${_cdx_binary} --nat:none --listen-ip=127.0.0.1"\
+  assert_equal "$(cdx_cmdline 0)" "${_cdx_binary} --nat=extip:127.0.0.1 --listen-ip=127.0.0.1"\
 " --data-dir=${_cdx_output}/data/storage-0"\
-" --api-port=8080 --disc-port=8190 '--log-level=INFO'"
+" --api-port=8080 --log-level=INFO"
 }
 
 @test "should generate the correct Logos Storage command line for node 1" {
   # shellcheck disable=SC2140
-  assert_equal "$(cdx_cmdline 1 '--bootstrap-node' 'node-spr')" "${_cdx_binary} --nat:none --listen-ip=127.0.0.1"\
+  assert_equal "$(cdx_cmdline 1 '--bootstrap-node' 'node-spr')" "${_cdx_binary} --nat=extip:127.0.0.1 --listen-ip=127.0.0.1"\
 " --bootstrap-node=node-spr"\
 " --data-dir=${_cdx_output}/data/storage-1"\
-" --api-port=8081 --disc-port=8191 '--log-level=INFO'"
+" --api-port=8081 --log-level=INFO"
 }
 
 @test "should refuse to generate the command line for node > 0 if no SPR is provided" {
@@ -33,19 +33,19 @@ setup() {
 
 @test "should generate metrics options when metrics enabled for node" {
   # shellcheck disable=SC2140
-  assert_equal "$(cdx_cmdline 0 --metrics)" "${_cdx_binary} --nat:none --listen-ip=127.0.0.1"\
+  assert_equal "$(cdx_cmdline 0 --metrics)" "${_cdx_binary} --nat=extip:127.0.0.1 --listen-ip=127.0.0.1"\
 " --metrics --metrics-port=8290 --metrics-address=0.0.0.0"\
 " --data-dir=${_cdx_output}/data/storage-0"\
-" --api-port=8080 --disc-port=8190 '--log-level=INFO'"
+" --api-port=8080 --log-level=INFO"
 }
 
 @test "should modify the Logos Storage log-level when specified" {
   cdx_set_log_level "DEBUG"
 
   # shellcheck disable=SC2140
-  assert_equal "$(cdx_cmdline 0)" "${_cdx_binary} --nat:none --listen-ip=127.0.0.1"\
+  assert_equal "$(cdx_cmdline 0)" "${_cdx_binary} --nat=extip:127.0.0.1 --listen-ip=127.0.0.1"\
 " --data-dir=${_cdx_output}/data/storage-0"\
-" --api-port=8080 --disc-port=8190 '--log-level=DEBUG'"
+" --api-port=8080 --log-level=DEBUG"
 }
 
 @test "should allow setting of global default options" {
@@ -66,7 +66,7 @@ setup() {
 
 @test "should pass readiness check if node is running" {
   data_dir="${TEST_OUTPUTS}/storage-temp"
-  "${_cdx_binary}" --nat:none --data-dir="$data_dir" &> /dev/null &
+  "${_cdx_binary}" --nat=extip:127.0.0.1 --data-dir="$data_dir" &> /dev/null &
   pid=$!
 
   assert cdx_ensure_ready 0 3

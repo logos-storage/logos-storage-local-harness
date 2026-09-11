@@ -68,7 +68,9 @@ cdx_generate_mix_pool() {
 }
 
 cdx_launch_relay() {
-  local relay_index="$1" bootstrap_spr="${2:-}" base_port log_file data_dir cmd backend
+  local relay_index="$1" bootstrap_spr="${2:-}" base_port log_file data_dir cmd backend binary
+  local relay_api_port relay_metrics_port quoted_log_file
+  local -a cmd_args
   backend="${CDX_MIX_RELAY_BACKEND:-standalone}"
 
   if [ -z "${CDX_MIX_POOL_DIR:-}" ]; then
@@ -81,46 +83,40 @@ cdx_launch_relay() {
   base_port="${CDX_RELAY_BASE_PORT:-4242}"
   data_dir="${CDX_MIX_POOL_DIR}/relays/relay_${relay_index}"
 
+  cmd_args=(
+    "--data-dir=${data_dir}"
+    "--listen-ip=127.0.0.1"
+    "--listen-port=$((base_port + relay_index))"
+    "--log-level=${_cdx_relay_log_level}"
+  )
+
   case "${backend}" in
     standalone)
       cdx_require_mix_relay_dht_binary || return 1
       log_file="${_cdx_logs}/relay-${relay_index}.log"
-      cmd="${_cdx_mix_relay_dht_binary} \
---data-dir=${data_dir} \
---listen-ip=127.0.0.1 \
---listen-port=$((base_port + relay_index)) \
---no-dht-proxy \
-'--log-level=${_cdx_relay_log_level}'"
+      binary="${_cdx_mix_relay_dht_binary}"
+      cmd_args+=("--no-dht-proxy")
       ;;
     storage)
       log_file="${_cdx_logs}/storage-relay-${relay_index}.log"
-      local relay_api_port=$((9080 + relay_index))
-      local relay_disc_port=$((9190 + relay_index))
-      local relay_metrics_port=$((9290 + relay_index))
-      cmd="${_cdx_binary} --nat:none \
---listen-ip=127.0.0.1 \
---listen-port=$((base_port + relay_index)) \
---data-dir=${data_dir} \
---api-port=${relay_api_port} \
---disc-port=${relay_disc_port} \
---metrics-port=${relay_metrics_port} \
---no-bootstrap-node \
---mix-enabled \
---mix-pool=${CDX_MIX_POOL_DIR}/pool.json \
-'--log-level=${_cdx_relay_log_level}'"
+      binary="${_cdx_binary}"
+      relay_api_port=$((9080 + relay_index))
+      relay_metrics_port=$((9290 + relay_index))
+      cmd_args+=(
+        "--nat=extip:127.0.0.1"
+        "--api-port=${relay_api_port}"
+        "--metrics-port=${relay_metrics_port}"
+        "--no-bootstrap-node"
+        "--mix-enabled"
+        "--mix-pool=${CDX_MIX_POOL_DIR}/pool.json"
+      )
       ;;
     mix_relay_dht)
       cdx_require_mix_relay_dht_binary || return 1
       log_file="${_cdx_logs}/relay-dht-${relay_index}.log"
-      local relay_disc_port=$((9190 + relay_index))
-      cmd="${_cdx_mix_relay_dht_binary} \
---data-dir=${data_dir} \
---listen-ip=127.0.0.1 \
---listen-port=$((base_port + relay_index)) \
---disc-port=${relay_disc_port} \
-'--log-level=${_cdx_relay_log_level}'"
+      binary="${_cdx_mix_relay_dht_binary}"
       if [[ -n "${bootstrap_spr}" ]]; then
-        cmd="${cmd} --bootstrap-node=${bootstrap_spr}"
+        cmd_args+=("--bootstrap-node=${bootstrap_spr}")
       fi
       ;;
     *)
@@ -130,7 +126,9 @@ cdx_launch_relay() {
       ;;
   esac
 
-  pm_async "bash" "-c" "exec ${cmd} &> ${log_file}" \
+  printf -v cmd '%q ' "${binary}" "${cmd_args[@]}"
+  printf -v quoted_log_file '%q' "${log_file}"
+  pm_async "bash" "-c" "exec ${cmd}&> ${quoted_log_file}" \
     -%- "mix-relay (${backend})" "${relay_index}"
   _cdx_mix_relay_pids[$relay_index]=$!
 
@@ -164,7 +162,6 @@ _cdx_timing_prefix=""
 _cdx_timing_log="/dev/null"
 # Base ports and timeouts
 _cdx_base_api_port=8080
-_cdx_base_disc_port=8190
 _cdx_base_metrics_port=8290
 _cdx_node_start_timeout=30
 _cdx_defaultopts=()
@@ -181,7 +178,6 @@ declare -A _cdx_pids
 
 _cdx_bootstrap_pid=""
 _cdx_bootstrap_api_port=7080
-_cdx_bootstrap_disc_port=7190
 
 cdx_set_outputs() {
   # Output folders
@@ -212,11 +208,6 @@ _cdx_api_port() {
   echo $((_cdx_base_api_port + node_index))
 }
 
-_cdx_disc_port() {
-  local node_index="$1"
-  echo $((_cdx_base_disc_port + node_index))
-}
-
 _cdx_metrics_port() {
   local node_index="$1"
   echo $((_cdx_base_metrics_port + node_index))
@@ -239,8 +230,13 @@ cdx_set_relay_log_level() {
 }
 
 cdx_cmdline() {
-  local node_index spr proxy_spr \
-    cdx_cmd="${_cdx_binary} --nat:none --listen-ip=127.0.0.1" opts=("$@")
+  local node_index spr opt cmd
+  local -a opts=("$@")
+  local -a cmd_args=(
+    "${_cdx_binary}"
+    "--nat=extip:127.0.0.1"
+    "--listen-ip=127.0.0.1"
+  )
 
   opts+=("${_cdx_defaultopts[@]}")
 
@@ -253,18 +249,21 @@ cdx_cmdline() {
       --bootstrap-node)
         shift_arr opts
         spr="${opts[0]}"
-        cdx_cmd="${cdx_cmd} --bootstrap-node=$spr"
+        cmd_args+=("--bootstrap-node=${spr}")
         ;;
       --dht-mix-proxy)
         shift_arr opts
-        proxy_spr="${opts[0]}"
-        cdx_cmd="${cdx_cmd} --dht-mix-proxy=$proxy_spr"
+        cmd_args+=("--dht-mix-proxy=${opts[0]}")
         ;;
       --metrics)
-        cdx_cmd="${cdx_cmd} --metrics --metrics-port=$(_cdx_metrics_port "$node_index") --metrics-address=0.0.0.0"
+        cmd_args+=(
+          "--metrics"
+          "--metrics-port=$(_cdx_metrics_port "$node_index")"
+          "--metrics-address=0.0.0.0"
+        )
         ;;
       --no-bootstrap-node)
-        cdx_cmd="${cdx_cmd} --no-bootstrap-node"
+        cmd_args+=("--no-bootstrap-node")
         ;;
       *)
         echoerr "Error: unknown option $opt"
@@ -284,13 +283,20 @@ cdx_cmdline() {
       echoerr "Error: CDX_MIX_ENABLED requires CDX_MIX_POOL_DIR"
       return 1
     fi
-    cdx_cmd="${cdx_cmd} --mix-enabled --mix-pool=${CDX_MIX_POOL_DIR}/pool.json"
+    cmd_args+=(
+      "--mix-enabled"
+      "--mix-pool=${CDX_MIX_POOL_DIR}/pool.json"
+    )
   fi
 
-  # shellcheck disable=SC2140
-  echo "${cdx_cmd}"\
- "--data-dir=${_cdx_data}/storage-${node_index} --api-port=$(_cdx_api_port "$node_index")"\
- "--disc-port=$(_cdx_disc_port "$node_index") '--log-level=${_cdx_log_level}'"
+  cmd_args+=(
+    "--data-dir=${_cdx_data}/storage-${node_index}"
+    "--api-port=$(_cdx_api_port "$node_index")"
+    "--log-level=${_cdx_log_level}"
+  )
+
+  printf -v cmd '%q ' "${cmd_args[@]}"
+  printf '%s\n' "${cmd% }"
 }
 
 cdx_get_spr() {
@@ -307,37 +313,43 @@ cdx_get_spr() {
 }
 
 cdx_launch_node() {
-  local node_index="$1"
+  local node_index="$1" storage_cmd log_file quoted_log_file
 
   _cdx_init_global_outputs || return 1
   _cdx_init_node_outputs "${node_index}" || return 1
 
-  local storage_cmd
   storage_cmd=$(cdx_cmdline "$@") || return 1
+  log_file="${_cdx_logs}/storage-${node_index}.log"
+  printf -v quoted_log_file '%q' "${log_file}"
 
-  cmd_array=()
-  IFS=' ' read -r -a cmd_array <<<"$storage_cmd"
-
-  pm_async "bash" "-c" "exec ${cmd_array[*]} &> ${_cdx_logs}/storage-${node_index}.log" -%- "storage" "${node_index}"
+  pm_async "bash" "-c" "exec ${storage_cmd} &> ${quoted_log_file}" \
+    -%- "storage" "${node_index}"
   _cdx_pids[$node_index]=$!
 
   cdx_ensure_ready "$node_index"
 }
 
 cdx_launch_bootstrap() {
+  local cmd data_dir quoted_log_file
+  local -a cmd_args
+
   _cdx_init_global_outputs || return 1
-  local data_dir="${_cdx_data}/bootstrap"
+  data_dir="${_cdx_data}/bootstrap"
   mkdir -p "${data_dir}" || return 1
 
-  local cmd
-  cmd="${_cdx_binary} --nat:none --listen-ip=127.0.0.1 \
---no-bootstrap-node \
---data-dir=${data_dir} \
---api-port=${_cdx_bootstrap_api_port} \
---disc-port=${_cdx_bootstrap_disc_port} \
-'--log-level=${_cdx_log_level}'"
+  cmd_args=(
+    "${_cdx_binary}"
+    "--nat=extip:127.0.0.1"
+    "--listen-ip=127.0.0.1"
+    "--no-bootstrap-node"
+    "--data-dir=${data_dir}"
+    "--api-port=${_cdx_bootstrap_api_port}"
+    "--log-level=${_cdx_log_level}"
+  )
 
-  pm_async "bash" "-c" "exec ${cmd} &> ${_cdx_logs}/bootstrap.log" \
+  printf -v cmd '%q ' "${cmd_args[@]}"
+  printf -v quoted_log_file '%q' "${_cdx_logs}/bootstrap.log"
+  pm_async "bash" "-c" "exec ${cmd}&> ${quoted_log_file}" \
     -%- "storage" "bootstrap"
   _cdx_bootstrap_pid=$!
 
