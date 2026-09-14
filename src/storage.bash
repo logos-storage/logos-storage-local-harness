@@ -354,7 +354,7 @@ cdx_upload_file() {
 }
 
 cdx_download_file() {
-  local node_index="$1" cid="$2" timestamp
+  local node_index="$1" cid="$2" transport_type="${3:direct}" timestamp
   timestamp="$(date +%s)" || return 1
 
   TIMEFORMAT="${_cdx_timing_prefix}download,${node_index},${cid},%E,%U,%S"
@@ -362,7 +362,7 @@ cdx_download_file() {
   # puts the most recent entries first, while at the same time breaking ties arbitrarily
   # for entries that happen within the same second.
   { time curl --silent --fail\
-    -XGET "http://localhost:$(net_port 'storage' 'api' "${node_index}")/api/storage/v1/data/$cid/network/stream"\
+    -XGET "http://localhost:$(net_port 'storage' 'api' "${node_index}")/api/storage/v1/data/$cid/network/stream?transport=${transport_type}"\
     -o "${_cdx_downloads}/storage-${node_index}/$cid" ; } 2> \
     "${_cdx_timing_partials}/storage-${node_index}-${timestamp}-${RANDOM}.csv"
 }
