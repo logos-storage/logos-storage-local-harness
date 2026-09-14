@@ -61,7 +61,7 @@ _storage_target_changed() {
 
 _add_target() {
   local node_index="$1" metrics_port
-  metrics_port=$(_cdx_metrics_port "$node_index") || return 1
+  metrics_port=$(net_port "storage" "metrics" "$node_index") || return 1
 
   prom_add "${metrics_port}" "${_experiment_type}" "${_experiment_id}"\
     "${node_index}" "storage"
@@ -69,7 +69,7 @@ _add_target() {
 
 _remove_target() {
   local node_index="$1" metrics_port
-  metrics_port=$(_cdx_metrics_port "$node_index") || return 1
+  metrics_port=$(net_port "storage" "metrics" "$node_index") || return 1
 
   prom_remove "${metrics_port}" "${_experiment_type}" "${_experiment_id}"\
     "${node_index}" "storage"

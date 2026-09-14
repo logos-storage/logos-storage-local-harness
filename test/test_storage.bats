@@ -14,8 +14,9 @@ setup() {
 @test "should generate the correct Logos Storage command line for node 0" {
   # shellcheck disable=SC2140
   assert_equal "$(cdx_cmdline 0)" "${_cdx_binary} --nat=extip:127.0.0.1 --listen-ip=127.0.0.1"\
+" --no-bootstrap-node"\
 " --data-dir=${_cdx_output}/data/storage-0"\
-" --api-port=8080 --log-level=INFO"
+" --api-port=$(net_port 'storage' 'api' 0) --listen-port=$(net_port 'storage' 'listen' 0) --log-level=INFO"
 }
 
 @test "should generate the correct Logos Storage command line for node 1" {
@@ -23,7 +24,7 @@ setup() {
   assert_equal "$(cdx_cmdline 1 '--bootstrap-node' 'node-spr')" "${_cdx_binary} --nat=extip:127.0.0.1 --listen-ip=127.0.0.1"\
 " --bootstrap-node=node-spr"\
 " --data-dir=${_cdx_output}/data/storage-1"\
-" --api-port=8081 --log-level=INFO"
+" --api-port=$(net_port 'storage' 'api' 1) --listen-port=$(net_port 'storage' 'listen' 1) --log-level=INFO"
 }
 
 @test "should refuse to generate the command line for node > 0 if no SPR is provided" {
@@ -34,9 +35,10 @@ setup() {
 @test "should generate metrics options when metrics enabled for node" {
   # shellcheck disable=SC2140
   assert_equal "$(cdx_cmdline 0 --metrics)" "${_cdx_binary} --nat=extip:127.0.0.1 --listen-ip=127.0.0.1"\
-" --metrics --metrics-port=8290 --metrics-address=0.0.0.0"\
+" --metrics --metrics-port=$(net_port 'storage' 'metrics' 0) --metrics-address=0.0.0.0"\
+" --no-bootstrap-node"\
 " --data-dir=${_cdx_output}/data/storage-0"\
-" --api-port=8080 --log-level=INFO"
+" --api-port=$(net_port 'storage' 'api' 0) --listen-port=$(net_port 'storage' 'listen' 0) --log-level=INFO"
 }
 
 @test "should modify the Logos Storage log-level when specified" {
@@ -44,20 +46,21 @@ setup() {
 
   # shellcheck disable=SC2140
   assert_equal "$(cdx_cmdline 0)" "${_cdx_binary} --nat=extip:127.0.0.1 --listen-ip=127.0.0.1"\
+" --no-bootstrap-node"\
 " --data-dir=${_cdx_output}/data/storage-0"\
-" --api-port=8080 --log-level=DEBUG"
+" --api-port=$(net_port 'storage' 'api' 0) --listen-port=$(net_port 'storage' 'listen' 0) --log-level=DEBUG"
 }
 
 @test "should allow setting of global default options" {
-  [[ ! "$(cdx_cmdline 0)" =~ "--metrics --metrics-port=8290 --metrics-address=0.0.0.0" ]]
+  [[ ! "$(cdx_cmdline 0)" =~ "--metrics --metrics-port=$(net_port 'storage' 'metrics' 0) --metrics-address=0.0.0.0" ]]
 
   cdx_add_defaultopts "--metrics"
 
-  [[ "$(cdx_cmdline 0)" =~ "--metrics --metrics-port=8290 --metrics-address=0.0.0.0" ]]
+  [[ "$(cdx_cmdline 0)" =~ "--metrics --metrics-port=$(net_port 'storage' 'metrics' 0) --metrics-address=0.0.0.0" ]]
 
   cdx_clear_defaultopts
 
-  [[ ! "$(cdx_cmdline 0)" =~ "--metrics --metrics-port=8290 --metrics-address=0.0.0.0" ]]
+  [[ ! "$(cdx_cmdline 0)" =~ "--metrics --metrics-port=$(net_port 'storage' 'metrics' 0) --metrics-address=0.0.0.0" ]]
 }
 
 @test "should fail readiness check if node is not running" {
@@ -66,13 +69,13 @@ setup() {
 
 @test "should pass readiness check if node is running" {
   data_dir="${TEST_OUTPUTS}/storage-temp"
-  "${_cdx_binary}" --nat=extip:127.0.0.1 --data-dir="$data_dir" &> /dev/null &
+  "${_cdx_binary}" --api-port=$(net_port 'storage' 'api' 0) --nat=extip:127.0.0.1 --data-dir="$data_dir" &> /dev/null &
   pid=$!
 
   assert cdx_ensure_ready 0 3
 
   kill -SIGKILL "$pid"
-  await "$pid"
+  pm_await "$pid"
   rm -rf "$data_dir"
 }
 
@@ -86,17 +89,7 @@ setup() {
   assert [ -f "${_cdx_output}/logs/storage-0.log" ]
   assert [ -d "${_cdx_output}/data/storage-0" ]
 
-  pid="${_cdx_pids[0]}"
-  assert [ -n "$pid" ]
-
-  cdx_destroy_node 0 true
-
-  refute [ -d "${_cdx_output}/data/storage-0" ]
-  refute [ -f "${_cdx_output}/logs/storage-0.log" ]
-  assert [ -z "${_cdx_pids[0]}" ]
-
-  # Node should already be dead.
-  refute kill -0 "$pid"
+  [[ "$(cdx_get_spr 0 'storage')" =~ ^"spr:" ]]
 
   pm_stop
 }
@@ -143,7 +136,7 @@ setup() {
   cdx_download_file_async 0 "$cid"
   handle=$result
 
-  await "$handle" 3
+  pm_await "$handle" 3
 
   assert cdx_check_download 0 0 "$cid"
 
@@ -154,13 +147,72 @@ setup() {
   refute cdx_launch_network 1
 }
 
+@test "should use node 0 as the bootstrap node" {
+  unset CDX_MIX_ENABLED
+  launched_nodes=()
+
+  # shellcheck disable=SC2329
+  cdx_launch_node() {
+    launched_nodes+=("$*")
+  }
+
+  # shellcheck disable=SC2329
+  cdx_get_spr() {
+    [[ "$1" -eq 0 ]] || return 1
+    echo "node-zero-spr"
+  }
+
+  assert cdx_launch_network 3
+  assert_equal "${#launched_nodes[@]}" 3
+  assert_equal "${launched_nodes[0]}" "0"
+  assert_equal "${launched_nodes[1]}" "1 --bootstrap-node node-zero-spr"
+  assert_equal "${launched_nodes[2]}" "2 --bootstrap-node node-zero-spr"
+}
+
+@test "should launch Mix relays after node 0" {
+  export CDX_MIX_ENABLED=true
+  export CDX_MIX_RELAY_BACKEND=standalone
+  launched_nodes=()
+  relay_launch=""
+
+  # shellcheck disable=SC2329
+  cdx_launch_node() {
+    launched_nodes+=("$*")
+  }
+
+  # shellcheck disable=SC2329
+  cdx_get_spr() {
+    if [[ -z "$2" ]]; then
+      [[ "$1" -eq 0 ]] || return 1
+      echo "bootstrap-spr"
+    elif [[ "$2" == "relay" ]]; then
+      [[ "$1" -eq 0 ]] || return 1
+      echo "relay-spr"
+    else
+      return 1
+    fi
+  }
+
+  # shellcheck disable=SC2329
+  cdx_launch_relays() {
+    relay_launch="$*"
+  }
+
+  cdx_private_queries() {
+    return 0
+  }
+
+  assert cdx_launch_network 2
+  assert_equal "${relay_launch}" "${_cdx_mix_min_pool} bootstrap-spr"
+  assert_equal "${launched_nodes[0]}" "0"
+  assert_equal "${launched_nodes[1]}" \
+    "1 --bootstrap-node bootstrap-spr --dht-mix-proxy relay-spr"
+}
+
 @test "should launch a Logos Storage network and allow uploading and downloading" {
   pm_start
 
-  assert cdx_launch_bootstrap
-  bootstrap_spr=$(cdx_get_bootstrap_spr)
-
-  assert cdx_launch_network 5 "$bootstrap_spr"
+  assert cdx_launch_network 5
 
   filename=$(cdx_generate_file 10)
   cid=$(cdx_upload_file 0 "$filename")
@@ -171,7 +223,7 @@ setup() {
     handles+=("$result")
   done
 
-  assert await_all "${handles[@]}"
+  assert pm_await_all "${handles[@]}"
 
   for i in {1..4}; do
     assert cdx_check_download 0 "$i" "$cid"
@@ -185,10 +237,7 @@ setup() {
 
   cdx_log_timings_start "${_cdx_output}/experiment-0.csv" "experiment-0,100MB"
 
-  assert cdx_launch_bootstrap
-  bootstrap_spr=$(cdx_get_bootstrap_spr)
-
-  assert cdx_launch_network 5 "$bootstrap_spr"
+  assert cdx_launch_network 5
 
   filename=$(cdx_generate_file 10)
   cid=$(cdx_upload_file 0 "$filename")
@@ -199,7 +248,7 @@ setup() {
     handles+=("$result")
   done
 
-  assert await_all "${handles[@]}"
+  assert pm_await_all "${handles[@]}"
 
   for i in {1..4}; do
     assert cdx_check_download 0 "$i" "$cid"
@@ -229,6 +278,5 @@ setup() {
 }
 
 teardown() {
-  cdx_stop_bootstrap
   clean_outputs
 }

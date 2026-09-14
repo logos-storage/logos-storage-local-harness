@@ -71,12 +71,6 @@ fi
 relay_count="${_cdx_mix_min_pool}"
 
 if [ "$mix_enabled" = "true" ]; then
-  cdx_require_mix_pool_binary || exit 1
-
-  if [ "${relay_backend}" = "standalone" ]; then
-    cdx_require_mix_relay_dht_binary || exit 1
-  fi
-
   mix_pool_dir="${_experiment_output}/mix-pool"
   cdx_generate_mix_pool "${relay_count}" "${mix_pool_dir}" || exit 1
 
@@ -91,22 +85,13 @@ fi
 
 # TODO: procmon management should be moved into
 #  experiment lifecycle management.
-# TODO: we should register this process with procmon
-#  so its also killed if something fails.
-trap "cdx_stop_relays; cdx_stop_bootstrap; pm_stop" EXIT INT TERM
+trap "pm_stop" EXIT INT TERM
 pm_start
 
 cdx_set_log_level "INFO;info:blockexcnetwork,blockexcengine,discoveryengine"
 cdx_set_relay_log_level "INFO"
 
-cdx_launch_bootstrap || exit 1
-bootstrap_spr=$(cdx_get_bootstrap_spr) || exit 1
-
-if [ "$mix_enabled" = "true" ]; then
-  cdx_launch_relays "${relay_count}" "${bootstrap_spr}" || exit 1
-fi
-
-cdx_launch_network "${node_count}" "${bootstrap_spr}"
+cdx_launch_network "${node_count}" || exit 1
 
 for file_size in "${file_sizes[@]}"; do
   for i in $(seq 1 "${repetitions}"); do
@@ -130,7 +115,7 @@ for file_size in "${file_sizes[@]}"; do
       handles+=("$result")
     done
 
-    await_all "${handles[@]}" "Inf"
+    pm_await_all "${handles[@]}" "Inf"
 
     cdx_log_timings_end
 
@@ -158,7 +143,7 @@ for file_size in "${file_sizes[@]}"; do
       fi
 
       # Query Prometheus metrics endpoint for storage_block_exchange_blocks_sent
-      blocks_served=$(curl -s "http://localhost:$(_cdx_metrics_port "$j")/metrics" 2>/dev/null | \
+      blocks_served=$(curl -s "http://localhost:$(net_port 'storage' 'metrics' "$j")/metrics" 2>/dev/null | \
         grep '^storage_block_exchange_blocks_sent_total' | \
         awk '{printf "%.0f", $2}')
 
@@ -200,3 +185,5 @@ for file_size in "${file_sizes[@]}"; do
     echoerr "=== End blocks served analysis ==="
   done
 done
+
+echoerr "Experiment completed successfully. Timing log saved to ${output_log}"

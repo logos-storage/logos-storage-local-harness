@@ -179,7 +179,7 @@ pm_stop() {
 # Arguments:
 #   $1: timeout in seconds
 pm_join() {
-  await "$_pm_pid" "$1"
+  pm_await "$_pm_pid" "$1"
 }
 
 # Kills a process and all of its descendants. This is full of caveats
@@ -197,7 +197,7 @@ pm_kill_rec() {
 
   # Tries to wait so processes are not left lingering.
   for descendant in "${result[@]}"; do
-    await "$descendant" || echo "[procmon] failed to wait for process $descendant"
+    pm_await "$descendant" || echo "[procmon] failed to wait for process $descendant"
   done
 
   return 0
@@ -238,7 +238,7 @@ pm_async() {
   result=("$!")
 }
 
-await() {
+pm_await() {
   local pid=$1 timeout=${2:-30} start="${SECONDS}"
   while kill -0 "$pid" 2> /dev/null; do
     if [ "$timeout" != 'Inf' ] && ((SECONDS - start > timeout)); then
@@ -251,10 +251,10 @@ await() {
   return 0
 }
 
-await_all() {
+pm_await_all() {
   local pids=("$@") timeout=${2:-30}
   for pid in "${pids[@]}"; do
-    await "$pid" "$timeout" || return 1
+    pm_await "$pid" "$timeout" || return 1
   done
 }
 

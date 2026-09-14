@@ -20,7 +20,7 @@ setup() {
   pm_async job
   pid=$result
 
-  assert await "$pid"
+  assert pm_await "$pid"
   pm_stop
 }
 
@@ -34,7 +34,7 @@ setup() {
   pm_async job
   pid=$result
 
-  refute await "$pid" 1
+  refute pm_await "$pid" 1
   pm_stop
 }
 
@@ -52,17 +52,17 @@ setup() {
     sl1=$!
     (
       sleep 500 &
-      await $!
+      pm_await $!
     ) &
     sh1=$!
     (
       sleep 500 &
-      await $!
+      pm_await $!
     ) &
     sh2=$!
-    await $sl1
-    await $sh1
-    await $sh2
+    pm_await $sl1
+    pm_await $sh1
+    pm_await $sh2
   ) &
   parent=$!
 
@@ -70,7 +70,7 @@ setup() {
   assert_equal "${#result[@]}" 9
 
   pm_kill_rec "$parent"
-  await "$parent" 5
+  pm_await "$parent" 5
 
   pm_list_descendants "$parent"
   # the parent will still show amongst its descendants,
@@ -118,8 +118,8 @@ setup() {
 
   touch "${_pm_output}/sync"
 
-  await "$p1"
-  await "$p2"
+  pm_await "$p1"
+  pm_await "$p2"
 
   # This should be more than enough for the process monitor to
   # catch the exits. The alternative would be implementing temporal
@@ -152,8 +152,8 @@ setup() {
 
   touch "${_pm_output}/sync"
 
-  await "$p1"
-  await "$p2"
+  pm_await "$p1"
+  pm_await "$p2"
 
   pm_join 3
 
@@ -178,7 +178,7 @@ setup() {
 
   pm_stop_tracking "$pid1" # remove this and the test should fail
   pm_kill_rec "$pid1"
-  await "$pid1"
+  pm_await "$pid1"
 
   # Sleeps a bit to let the procmon catch up.
   sleep 3
@@ -218,9 +218,9 @@ callback() {
   pm_async sleep 0.1 -%- "awake"
   pid3=$result
 
-  await "$pid1"
-  await "$pid2"
-  await "$pid3"
+  pm_await "$pid1"
+  pm_await "$pid2"
+  pm_await "$pid3"
 
   pm_stop
 
@@ -263,7 +263,7 @@ callback() {
   pm_async sleep 0.1 -%- "sleepy" "arg1" "arg2"
   pid=$result
 
-  await "$pid"
+  pm_await "$pid"
 
   assert_equal "$(cat "${_pm_output}/${pid}-sleepy-start-args")" "arg1 arg2"
   assert_equal "$(cat "${_pm_output}/${pid}-sleepy-exit-args")" "arg1 arg2"
