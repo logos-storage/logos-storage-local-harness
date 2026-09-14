@@ -10,6 +10,7 @@ source "${LIB_SRC}/procmon.bash"
 # shellcheck source=./src/networks.bash
 source "${LIB_SRC}/networks.bash"
 
+_cdx_binary="" # shut up shellcheck
 require_binary "_cdx_binary" "storage" "STORAGE_BINARY"
 
 # Port ranges

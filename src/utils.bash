@@ -35,6 +35,7 @@ require_binary() {
     return 1
   fi
 
+  #shellcheck disable=SC2034
   var="$path"
 }
 
