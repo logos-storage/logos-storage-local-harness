@@ -202,7 +202,7 @@ setup() {
     return 0
   }
 
-  assert cdx_launch_network 2
+  assert cdx_launch_network 2 4
   assert_equal "${relay_launch}" "${_cdx_mix_min_pool} bootstrap-spr"
   assert_equal "${launched_nodes[0]}" "0"
   assert_equal "${launched_nodes[1]}" \

@@ -162,6 +162,8 @@ _pm_halt() {
 
   # last but not least, harakiri
   pm_kill_rec "$_pm_pid"
+
+  echoerr "Procmon halted with [$1]"
 }
 
 # Stops the process monitor, killing the entire process group.

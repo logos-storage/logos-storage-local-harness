@@ -34,8 +34,16 @@ seeder_count="${2:-1}"
 repetitions="${3:-1}"
 output_log="${4:-"${OUTPUTS}/k-node-$(date +%s)-${RANDOM}.csv"}"
 stagger_delay="${5:-0}"
-mix_enabled="${6:-false}"
+relay_count="${6:-0}"
 relay_backend="${7:-storage}"
+
+if [ "$relay_count" -eq 0 ]; then
+  mix_enabled=false
+elif [ "$relay_count" -le _cdx_mix_min_pool ]; then
+  fail "Error: relay_count must be greater than ${_cdx_mix_min_pool} (minimum pool size)"
+else
+  mix_enabled=true
+fi
 
 case "${relay_backend}" in
   standalone|storage|mix_relay_dht) ;;
@@ -68,8 +76,6 @@ if [ "$mix_enabled" = "true" ]; then
   echoerr "* Relay backend: ${relay_backend}"
 fi
 
-relay_count="${_cdx_mix_min_pool}"
-
 if [ "$mix_enabled" = "true" ]; then
   mix_pool_dir="${_experiment_output}/mix-pool"
   cdx_generate_mix_pool "${relay_count}" "${mix_pool_dir}" || exit 1
@@ -91,7 +97,7 @@ pm_start
 cdx_set_log_level "INFO;info:blockexcnetwork,blockexcengine,discoveryengine"
 cdx_set_relay_log_level "INFO"
 
-cdx_launch_network "${node_count}" || exit 1
+cdx_launch_network "${node_count}" "${relay_count}" || exit 1
 
 for file_size in "${file_sizes[@]}"; do
   for i in $(seq 1 "${repetitions}"); do

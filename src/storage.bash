@@ -256,7 +256,7 @@ cdx_private_queries() {
 }
 
 cdx_launch_network() {
-  local node_count="$1" bootstrap_spr mix_node_spr relay_count i
+  local node_count="$1" relay_count="${2:-0}" bootstrap_spr mix_node_spr i
   local -a extra_args=()
 
   if [[ "$node_count" -lt 2 ]]; then
@@ -267,8 +267,7 @@ cdx_launch_network() {
   cdx_launch_node 0 || return 1
   bootstrap_spr=$(cdx_get_spr 0) || return 1
 
-  if [[ "${CDX_MIX_ENABLED:-}" == "true" ]]; then
-    relay_count="${_cdx_mix_min_pool}"
+  if [[ "${relay_count}" -gt 0 ]]; then
     cdx_launch_relays "${relay_count}" "${bootstrap_spr}" || return 1
 
     if [[ "${CDX_MIX_RELAY_BACKEND:-}" == "mix_relay_dht" ]]; then
@@ -290,7 +289,7 @@ cdx_launch_network() {
 
   for i in $(seq 1 "$((node_count - 1))"); do
     cdx_launch_node "$i" "--bootstrap-node" "$bootstrap_spr" "${extra_args[@]}" || return 1
-    if [[ "${CDX_MIX_ENABLED:-}" == "true" ]]; then
+    if [[ "${relay_count}" -gt 0 ]]; then
       cdx_private_queries "$i" || fail "Node ${i} does not have private queries enabled"
       echoerr "Node ${i} is using Mix relay ${mix_node_spr}"
     fi
@@ -301,7 +300,7 @@ cdx_launch_network() {
 cdx_ensure_ready() {
   local node_index="$1" timeout=${2:-$_cdx_node_start_timeout}
   echoerr "Waiting ${timeout} seconds for node ${node_index} to be ready."
-  await "${timeout}" cdx_get_spr "$node_index" || return 1
+  await "${timeout}" cdx_get_spr "$node_index" > /dev/null || return 1
   echoerr "Node ${node_index} is ready."
 }
 
