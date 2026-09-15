@@ -39,7 +39,7 @@ relay_backend="${7:-storage}"
 
 if [ "$relay_count" -eq 0 ]; then
   mix_enabled=false
-elif [ "$relay_count" -le _cdx_mix_min_pool ]; then
+elif [ "$relay_count" -le "${_cdx_mix_min_pool}" ]; then
   fail "Error: relay_count must be greater than ${_cdx_mix_min_pool} (minimum pool size)"
 else
   mix_enabled=true
