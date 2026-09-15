@@ -19,9 +19,9 @@ setup() {
   net_decl_port "storage" "listen"
   net_decl_port "storage" "metrics"
 
-  api_base=$(_net_port_base "storage" "api")
-  listen_base=$(_net_port_base "storage" "listen")
-  metrics_base=$(_net_port_base "storage" "metrics")
+  api_base=$(net_base_port "storage" "api")
+  listen_base=$(net_base_port "storage" "listen")
+  metrics_base=$(net_base_port "storage" "metrics")
 
   assert [ $((listen_base - api_base)) -ge 100 ]
   assert [ $((metrics_base - listen_base)) -ge 100 ]

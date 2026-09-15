@@ -5,8 +5,6 @@
 # of them fails or gets killed. It is used to ensure that no processes
 # from failed experiments are left behind.
 #
-set -o pipefail
-
 LIB_SRC=${LIB_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
 
 # shellcheck source=./src/utils.bash

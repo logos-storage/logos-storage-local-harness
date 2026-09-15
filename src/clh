@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 LIB_SRC=${LIB_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
+set -eo pipefail
 
 PROM_TARGETS_DIR=${PROM_TARGETS_DIR:-"${LIB_SRC}/../dashboard/targets/"}
 PROM_TARGETS_DIR=$(realpath "${PROM_TARGETS_DIR}")
@@ -15,5 +16,8 @@ prom_set_outputs "${PROM_TARGETS_DIR}"
 
 # If running from an interactive shell, fire the default experiment.
 if [[ $- =~ i ]]; then
+  echoerr "Starting from interactive shell, disable set -e"
+  set +e
+  pm_start
   exp_start "default"
 fi

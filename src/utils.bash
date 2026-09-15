@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-set -o pipefail
-
 if ! command -v sha1sum > /dev/null; then
   echoerr "Error: sha1sum is required for computing file hashes"
   exit 1

@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-set -eo pipefail
-
 LIB_SRC=${LIB_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
 
 # shellcheck source=./src/utils.bash
@@ -354,7 +352,7 @@ cdx_upload_file() {
 }
 
 cdx_download_file() {
-  local node_index="$1" cid="$2" transport_type="${3:direct}" timestamp
+  local node_index="$1" cid="$2" transport_type="${3:-direct}" timestamp
   timestamp="$(date +%s)" || return 1
 
   TIMEFORMAT="${_cdx_timing_prefix}download,${node_index},${cid},%E,%U,%S"
