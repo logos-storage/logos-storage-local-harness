@@ -67,9 +67,9 @@ pm_start() {
           _pm_halt "halted_no_return"
         fi
 
-        # Parent process exited successfully, all good.
+        # Parent process exited successfully, all good. We don't log anything
+        # in this case as the exit callback should do it for us.
         if [ "$exit_code" -eq 0 ]; then
-          echoerr "[procmon] ${pid} died with exit code $exit_code."
           rm "${_pm_output}/${pid}.pid"
           continue
         fi
@@ -283,6 +283,7 @@ _pm_job_exited() {
   else
     echo "$exit_code" > "$pid_file"
   fi
+  echoerr "[procmon] job exited: $pid ($proc_type) with exit code <$exit_code>, args: ${*:-<no args>}"
   _pm_invoke_callback "exit" "$proc_type" "$pid" "$exit_code" "$@"
 }
 

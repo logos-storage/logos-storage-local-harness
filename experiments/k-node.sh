@@ -29,13 +29,28 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=./src/clh
 source "${SCRIPT_DIR}/../src/clh"
 
-node_count="${1:-2}"
-seeder_count="${2:-1}"
-repetitions="${3:-1}"
-output_log="${4:-"${OUTPUTS}/k-node-$(date +%s)-${RANDOM}.csv"}"
-stagger_delay="${5:-0}"
-relay_count="${6:-0}"
-relay_backend="${7:-storage}"
+# This currently falls back to positional if no config is provided,
+# but I'd honestly like to remove that.
+if ! apply_conf "$@"; then
+  node_count="${1:-2}"
+  seeder_count="${2:-1}"
+  repetitions="${3:-1}"
+  output_log="${4:-"${OUTPUTS}/k-node-$(date +%s)-${RANDOM}.csv"}"
+  stagger_delay="${5:-0}"
+  relay_count="${6:-0}"
+  relay_backend="${7:-storage}"
+  transport="${8:-direct}"
+
+  if [ "$#" -gt 8 ]; then
+    shift 8
+    file_sizes=("$@")
+  else
+    echoerr "No file sizes specified, using default (100)."
+    file_sizes=("100")
+  fi
+else
+  output_log="${3:-"${OUTPUTS}/k-node-$(date +%s)-${RANDOM}.csv"}"
+fi
 
 if [ "$relay_count" -eq 0 ]; then
   mix_enabled=false
@@ -55,14 +70,6 @@ case "${relay_backend}" in
 esac
 
 export CDX_MIX_RELAY_BACKEND="${relay_backend}"
-
-if [ "$#" -gt 7 ]; then
-  shift 7
-  file_sizes=("$@")
-else
-  echoerr "No file sizes specified, using default (100)."
-  file_sizes=("100")
-fi
 
 exp_start "k-node"
 
@@ -94,8 +101,8 @@ fi
 trap "pm_stop" EXIT INT TERM
 pm_start
 
-cdx_set_log_level "INFO;info:blockexcnetwork,blockexcengine,discoveryengine"
-cdx_set_relay_log_level "INFO"
+cdx_set_log_level "${storage_log_level:-INFO}"
+cdx_set_relay_log_level "${relay_log_level:-INFO}"
 
 cdx_launch_network "${node_count}" "${relay_count}" || exit 1
 
@@ -116,7 +123,7 @@ for file_size in "${file_sizes[@]}"; do
       fi
 
       echoerr "Starting leecher $j download..."
-      cdx_download_file_async "$j" "$cid"
+      cdx_download_file_async "$j" "$cid" "${transport}"
       # shellcheck disable=SC2128
       handles+=("$result")
     done

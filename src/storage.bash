@@ -354,7 +354,7 @@ cdx_download_file() {
   local node_index="$1" cid="$2" transport_type="${3:-direct}" timestamp
   timestamp="$(date +%s)" || return 1
 
-  TIMEFORMAT="${_cdx_timing_prefix}download,${node_index},${cid},%E,%U,%S"
+  TIMEFORMAT="${_cdx_timing_prefix}download,${transport_type},${node_index},${cid},%E,%U,%S"
   # Note that timing partial filenames are constructed so that lexicographic sorting
   # puts the most recent entries first, while at the same time breaking ties arbitrarily
   # for entries that happen within the same second.
