@@ -262,11 +262,12 @@ setup() {
 
   decimal_regex='^[0-9]+(\.[0-9]+)?$'
 
-  while IFS=',' read -r experiment file_size operation node_index recorded_cid wallclock user system; do
+  while IFS=',' read -r experiment file_size operation transport node_index recorded_cid wallclock user system; do
     assert [ "$experiment" = "experiment-0" ]
     assert [ "$file_size" = "100MB" ]
     assert [ "$recorded_cid" = "$cid" ]
     assert [ "$operation" = "download" ]
+    assert [ "$transport" = "direct" ]
 
     # We can't use asserts for regex matches so use "raw" bats
     # assertions.

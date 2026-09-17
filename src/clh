@@ -10,6 +10,8 @@ OUTPUTS=$(realpath "${OUTPUTS}")
 
 # shellcheck source=./src/experiment.bash
 source "${LIB_SRC}/experiment.bash"
+# shellcheck source=./src/config.bash
+source "${LIB_SRC}/config.bash"
 
 exp_set_outputs "${OUTPUTS}"
 prom_set_outputs "${PROM_TARGETS_DIR}"

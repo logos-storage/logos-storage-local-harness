@@ -355,12 +355,13 @@ cdx_download_file() {
   timestamp="$(date +%s)" || return 1
 
   TIMEFORMAT="${_cdx_timing_prefix}download,${transport_type},${node_index},${cid},%E,%U,%S"
-  # Note that timing partial filenames are constructed so that lexicographic sorting
-  # puts the most recent entries first, while at the same time breaking ties arbitrarily
-  # for entries that happen within the same second.
+  # time writes to stderr (FD 2) and you can't redirect it. We therefore group the command and redirect
+  # the whole group to the measurement file (>2 file.csv). To avoid garbling that with curl's stderr, 
+  # we must first redirect curl's stderr to another file descriptor (2>&3), which we then redirect 
+  # to stderr at the group level (3>&2).
   { time curl --silent --fail\
     -XGET "http://localhost:$(net_port 'storage' 'api' "${node_index}")/api/storage/v1/data/$cid/network/stream?transport=${transport_type}"\
-    -o "${_cdx_downloads}/storage-${node_index}/$cid" ; } 2> \
+    -o "${_cdx_downloads}/storage-${node_index}/$cid" 2>&3 ; } 3>&2 2> \
     "${_cdx_timing_partials}/storage-${node_index}-${timestamp}-${RANDOM}.csv"
 }
 
