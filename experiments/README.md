@@ -32,9 +32,11 @@ export MIX_POOL_BINARY=/absolute/path/to/mix_pool
 bash experiments/k-node.sh use_conf ./experiments/k-node-conf.sh two_node_small_mix
 ```
 
-Edit or copy a preset to change its settings. `file_sizes_arr="1 2 4"` becomes
-the global array `file_sizes=(1 2 4)`: keys ending in `_arr` lose that suffix and
-their values are split on spaces. Sizes are integer MiB values without units.
+Edit or copy a preset to change its settings. Applied parameters have a `cfg_`
+prefix: `node_count` becomes `cfg_node_count`, and `file_sizes_arr="1 2 4"`
+becomes the global array `cfg_file_sizes=(1 2 4)`. Keys ending in `_arr` lose
+that suffix and their values are split on spaces. `cfg_name` holds the preset
+name. Sizes are integer MiB values without units.
 Use at least two nodes and `1 <= seeder_count < node_count`.
 `stagger_delay` is an integer number of seconds; log levels can be set with
 `storage_log_level` and `relay_log_level` (both default to `INFO`).
@@ -42,6 +44,18 @@ Use at least two nodes and `1 <= seeder_count < node_count`.
 `relay_count=0` disables Mix routing; enabling it currently requires at least
 5 relays. The presets use the `storage` relay backend. The alternative
 `standalone` and `mix_relay_dht` backends require `MIX_RELAY_DHT_BINARY`.
+
+### Run matching configurations
+
+```bash
+bash experiments/runwith.bash experiments/k-node.sh experiments/k-node-conf.sh 'mix_*'
+```
+
+The runner selects associative arrays whose names match the quoted shell glob
+(`'*'` selects all configurations), then runs the experiment sequentially in
+alphabetical order using `use_conf <configuration_script> <configuration_name>`.
+It continues after failed runs and exits nonzero if any run fails or no names
+match. An interrupt stops the batch.
 
 ### Run with positional arguments
 
@@ -61,9 +75,17 @@ Logs and data are under `outputs/k-node-<timestamp>-<random>/` (or `$OUTPUTS`).
 Timing rows are appended without a header, with fields:
 
 ```text
-file_size_mib,repetition,cid,download,transport,node_index,cid,real_seconds,user_seconds,sys_seconds
+config_name,node_count,seeder_count,stagger_delay,relay_count,config_transport,file_size_mib,repetition,cid,download,transport,node_index,cid,real_seconds,user_seconds,sys_seconds
 ```
 
-In configuration mode, the script currently also uses the configuration name
-as the timing-log path: `medium_direct` writes to `./medium_direct`. Positional
+The configuration prefix is produced by
+`cfg_par_string name node_count seeder_count stagger_delay relay_count transport`,
+which takes original keys in column order. Each row then records the current
+file size and repetition, followed by the CID and download timing fields.
+Values containing commas, quotes, or newlines are CSV-quoted. Unknown keys
+return an error. Positional runs use
+`positional` as the configuration name and record the same parameter columns.
+
+In configuration mode, an optional fourth argument sets the timing-log path;
+otherwise it defaults to `$OUTPUTS/k-node-<timestamp>-<random>.csv`. Positional
 mode uses `OUTPUT_LOG`. The script stops its managed processes when it exits.

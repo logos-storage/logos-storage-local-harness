@@ -31,66 +31,73 @@ source "${SCRIPT_DIR}/../src/clh"
 
 # This currently falls back to positional if no config is provided,
 # but I'd honestly like to remove that.
-if ! apply_conf "$@"; then
-  node_count="${1:-2}"
-  seeder_count="${2:-1}"
-  repetitions="${3:-1}"
+if ! cfg_apply "$@"; then
+  # shellcheck disable=SC2034 # Read indirectly by cfg_par_string.
+  cfg_name=positional
+  cfg_node_count="${1:-2}"
+  cfg_seeder_count="${2:-1}"
+  cfg_repetitions="${3:-1}"
   output_log="${4:-"${OUTPUTS}/k-node-$(date +%s)-${RANDOM}.csv"}"
-  stagger_delay="${5:-0}"
-  relay_count="${6:-0}"
-  relay_backend="${7:-storage}"
-  transport="${8:-direct}"
+  cfg_stagger_delay="${5:-0}"
+  cfg_relay_count="${6:-0}"
+  cfg_relay_backend="${7:-storage}"
+  cfg_transport="${8:-direct}"
 
   if [ "$#" -gt 8 ]; then
     shift 8
-    file_sizes=("$@")
+    cfg_file_sizes=("$@")
   else
     echoerr "No file sizes specified, using default (100)."
-    file_sizes=("100")
+    cfg_file_sizes=("100")
   fi
 else
-  output_log="${3:-"${OUTPUTS}/k-node-$(date +%s)-${RANDOM}.csv"}"
+  output_log="${4:-"${OUTPUTS}/k-node-$(date +%s)-${RANDOM}.csv"}"
 fi
 
-if [ "$relay_count" -eq 0 ]; then
+cfg_storage_log_level="${cfg_storage_log_level:-INFO}"
+cfg_relay_log_level="${cfg_relay_log_level:-INFO}"
+experiment_info=$(cfg_par_string name node_count seeder_count \
+  stagger_delay relay_count transport)
+
+if [ "$cfg_relay_count" -eq 0 ]; then
   mix_enabled=false
-elif [ "$relay_count" -le "${_cdx_mix_min_pool}" ]; then
+elif [ "$cfg_relay_count" -le "${_cdx_mix_min_pool}" ]; then
   fail "Error: relay_count must be greater than ${_cdx_mix_min_pool} (minimum pool size)"
 else
   mix_enabled=true
 fi
 
-case "${relay_backend}" in
+case "${cfg_relay_backend}" in
   standalone|storage|mix_relay_dht) ;;
   *)
-    echoerr "Error: invalid relay_backend='${relay_backend}'" \
+    echoerr "Error: invalid relay_backend='${cfg_relay_backend}'" \
       "(use 'standalone', 'storage', or 'mix_relay_dht')"
     exit 1
     ;;
 esac
 
-export CDX_MIX_RELAY_BACKEND="${relay_backend}"
+export CDX_MIX_RELAY_BACKEND="${cfg_relay_backend}"
 
 exp_start "k-node"
 
-echoerr "* Nodes: ${node_count}"
-echoerr "* Seeders: ${seeder_count}"
-echoerr "* Repetitions: ${repetitions}"
-echoerr "* File Sizes: ${file_sizes[*]}"
-echoerr "* Stagger Delay: ${stagger_delay}s"
+echoerr "* Nodes: ${cfg_node_count}"
+echoerr "* Seeders: ${cfg_seeder_count}"
+echoerr "* Repetitions: ${cfg_repetitions}"
+echoerr "* File Sizes: ${cfg_file_sizes[*]}"
+echoerr "* Stagger Delay: ${cfg_stagger_delay}s"
 echoerr "* Timing log: ${output_log}"
 if [ "$mix_enabled" = "true" ]; then
-  echoerr "* Relay backend: ${relay_backend}"
+  echoerr "* Relay backend: ${cfg_relay_backend}"
 fi
 
 if [ "$mix_enabled" = "true" ]; then
   mix_pool_dir="${_experiment_output}/mix-pool"
-  cdx_generate_mix_pool "${relay_count}" "${mix_pool_dir}" || exit 1
+  cdx_generate_mix_pool "${cfg_relay_count}" "${mix_pool_dir}" || exit 1
 
   export CDX_MIX_POOL_DIR="${mix_pool_dir}"
   export CDX_MIX_ENABLED=true
 
-  echoerr "* Mix: enabled, ${relay_count} relays via ${relay_backend} backend," \
+  echoerr "* Mix: enabled, ${cfg_relay_count} relays via ${cfg_relay_backend} backend," \
     "pool=${mix_pool_dir}/pool.json"
 else
   echoerr "* Mix: disabled"
@@ -101,29 +108,29 @@ fi
 trap "pm_stop" EXIT INT TERM
 pm_start
 
-cdx_set_log_level "${storage_log_level:-INFO}"
-cdx_set_relay_log_level "${relay_log_level:-INFO}"
+cdx_set_log_level "${cfg_storage_log_level}"
+cdx_set_relay_log_level "${cfg_relay_log_level}"
 
-cdx_launch_network "${node_count}" "${relay_count}" || exit 1
+cdx_launch_network "${cfg_node_count}" "${cfg_relay_count}" || exit 1
 
-for file_size in "${file_sizes[@]}"; do
-  for i in $(seq 1 "${repetitions}"); do
+for file_size in "${cfg_file_sizes[@]}"; do
+  for i in $(seq 1 "${cfg_repetitions}"); do
     file_name=$(cdx_generate_file "${file_size}")
-    for j in $(seq 0 "$((seeder_count - 1))"); do
+    for j in $(seq 0 "$((cfg_seeder_count - 1))"); do
       cid=$(cdx_upload_file "${j}" "${file_name}")
     done
 
-    cdx_log_timings_start "${output_log}" "${file_size},${i},${cid}"
+    cdx_log_timings_start "${output_log}" "${experiment_info},${file_size},${i},${cid}"
 
     handles=()
-    for j in $(seq "${seeder_count}" "$((node_count - 1))"); do
-      if [ "$stagger_delay" -gt 0 ] && [ "$j" -gt "${seeder_count}" ]; then
-        echoerr "Staggering: waiting ${stagger_delay}s before starting leecher $j..."
-        sleep "$stagger_delay"
+    for j in $(seq "${cfg_seeder_count}" "$((cfg_node_count - 1))"); do
+      if [ "$cfg_stagger_delay" -gt 0 ] && [ "$j" -gt "${cfg_seeder_count}" ]; then
+        echoerr "Staggering: waiting ${cfg_stagger_delay}s before starting leecher $j..."
+        sleep "$cfg_stagger_delay"
       fi
 
       echoerr "Starting leecher $j download..."
-      cdx_download_file_async "$j" "$cid" "${transport}"
+      cdx_download_file_async "$j" "$cid" "${cfg_transport}"
       # shellcheck disable=SC2128
       handles+=("$result")
     done
@@ -133,7 +140,7 @@ for file_size in "${file_sizes[@]}"; do
     cdx_log_timings_end
 
     echoerr "=== Memory usage ==="
-    for j in $(seq 0 "$((node_count - 1))"); do
+    for j in $(seq 0 "$((cfg_node_count - 1))"); do
       storage_pid=$(pgrep -f "storage.*--data-dir.*storage-$j" | head -1)
       if [ -z "$storage_pid" ]; then
         echoerr "Node $j: storage process not found"
@@ -149,9 +156,9 @@ for file_size in "${file_sizes[@]}"; do
     seeder_blocks_served=0
     leecher_blocks_served=0
 
-    for j in $(seq 0 "$((node_count - 1))"); do
+    for j in $(seq 0 "$((cfg_node_count - 1))"); do
       node_type="leecher"
-      if [ "$j" -lt "$seeder_count" ]; then
+      if [ "$j" -lt "$cfg_seeder_count" ]; then
         node_type="seeder"
       fi
 
@@ -174,7 +181,7 @@ for file_size in "${file_sizes[@]}"; do
     done
 
     expected_blocks=$((file_size * 1024 / BLOCK_SIZE_KB))
-    total_downloads=$((node_count - seeder_count))
+    total_downloads=$((cfg_node_count - cfg_seeder_count))
     seeder_expected=$((expected_blocks * total_downloads))
 
     echoerr "---"
