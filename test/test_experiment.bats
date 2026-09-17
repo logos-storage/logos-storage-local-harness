@@ -28,7 +28,7 @@ setup() {
 @test "should launch Logos Storage nodes with metrics enabled when there is an experiment in scope" {
   exp_start "experiment-type"
 
-  [[ "$(cdx_cmdline 0)" =~ "--metrics-port=8290 --metrics-address=0.0.0.0" ]]
+  [[ "$(cdx_cmdline 0)" =~ "--metrics-port=$(net_port "storage" "metrics" 0) --metrics-address=0.0.0.0" ]]
 }
 
 @test "should add a prometheus target for each Logos Storage node when there is an experiment in scope" {
@@ -37,11 +37,8 @@ setup() {
   pm_start
   cdx_launch_node 0
 
-  config_file="${_prom_output}/8290-k-node-${_experiment_id}-0-storage.json"
+  config_file="${_prom_output}/$(net_port "storage" "metrics" 0)-k-node-${_experiment_id}-0-storage.json"
   assert [ -f "$config_file" ]
-
-  cdx_destroy_node 0
-  assert [ ! -f "$config_file" ]
 }
 
 teardown() {

@@ -15,3 +15,9 @@ setup() {
   shift_arr arr 2
   assert_equal "${arr[*]}" "3 4"
 }
+
+@test "should await for predicate" {
+  rm -rf "/tmp/test_await_file"
+  (sleep 1 && echo "Hello" > "/tmp/test_await_file") &
+  await 5 [ -f "/tmp/test_await_file" ]
+}

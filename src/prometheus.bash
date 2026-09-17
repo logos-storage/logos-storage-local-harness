@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-set -o pipefail
-
 LIB_SRC=${LIB_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
 
 # shellcheck source=./src/utils.bash

@@ -5,8 +5,6 @@
 # of them fails or gets killed. It is used to ensure that no processes
 # from failed experiments are left behind.
 #
-set -o pipefail
-
 LIB_SRC=${LIB_SRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}
 
 # shellcheck source=./src/utils.bash
@@ -69,9 +67,9 @@ pm_start() {
           _pm_halt "halted_no_return"
         fi
 
-        # Parent process exited successfully, all good.
+        # Parent process exited successfully, all good. We don't log anything
+        # in this case as the exit callback should do it for us.
         if [ "$exit_code" -eq 0 ]; then
-          echoerr "[procmon] ${pid} died with exit code $exit_code."
           rm "${_pm_output}/${pid}.pid"
           continue
         fi
@@ -164,6 +162,8 @@ _pm_halt() {
 
   # last but not least, harakiri
   pm_kill_rec "$_pm_pid"
+
+  echoerr "Procmon halted with [$1]"
 }
 
 # Stops the process monitor, killing the entire process group.
@@ -179,7 +179,7 @@ pm_stop() {
 # Arguments:
 #   $1: timeout in seconds
 pm_join() {
-  await "$_pm_pid" "$1"
+  pm_await "$_pm_pid" "$1"
 }
 
 # Kills a process and all of its descendants. This is full of caveats
@@ -197,7 +197,7 @@ pm_kill_rec() {
 
   # Tries to wait so processes are not left lingering.
   for descendant in "${result[@]}"; do
-    await "$descendant" || echo "[procmon] failed to wait for process $descendant"
+    pm_await "$descendant" || echo "[procmon] failed to wait for process $descendant"
   done
 
   return 0
@@ -238,7 +238,7 @@ pm_async() {
   result=("$!")
 }
 
-await() {
+pm_await() {
   local pid=$1 timeout=${2:-30} start="${SECONDS}"
   while kill -0 "$pid" 2> /dev/null; do
     if [ "$timeout" != 'Inf' ] && ((SECONDS - start > timeout)); then
@@ -251,10 +251,10 @@ await() {
   return 0
 }
 
-await_all() {
+pm_await_all() {
   local pids=("$@") timeout=${2:-30}
   for pid in "${pids[@]}"; do
-    await "$pid" "$timeout" || return 1
+    pm_await "$pid" "$timeout" || return 1
   done
 }
 
@@ -283,6 +283,7 @@ _pm_job_exited() {
   else
     echo "$exit_code" > "$pid_file"
   fi
+  echoerr "[procmon] job exited: $pid ($proc_type) with exit code <$exit_code>, args: ${*:-<no args>}"
   _pm_invoke_callback "exit" "$proc_type" "$pid" "$exit_code" "$@"
 }
 

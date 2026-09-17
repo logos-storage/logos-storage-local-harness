@@ -31,3 +31,5 @@ jobs:
 
     - name: Run Tests
       run: ./test/bats/bin/bats test/
+      env:
+        STORAGE_BINARY: /usr/local/bin/storage
