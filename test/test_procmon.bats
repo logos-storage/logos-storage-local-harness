@@ -10,6 +10,48 @@ setup() {
   pm_set_outputs "${TEST_OUTPUTS}/pm"
 }
 
+@test "await all defaults to 30 seconds for each PID" {
+  pm_await() { printf '%s %s\n' "$1" "$2"; }
+
+  run pm_await_all 1234 5678
+  assert_success
+  assert_output $'1234 30\n5678 30'
+}
+
+@test "await all forwards an explicit timeout to each PID" {
+  pm_await() { printf '%s %s\n' "$1" "$2"; }
+
+  run pm_await_all --timeout 60 1234 5678
+  assert_success
+  assert_output $'1234 60\n5678 60'
+}
+
+@test "await all does not treat Inf as a PID" {
+  pm_await() { printf '%s %s\n' "$1" "$2"; }
+
+  run pm_await_all --timeout Inf 1234 5678
+  assert_success
+  assert_output $'1234 Inf\n5678 Inf'
+}
+
+@test "await all rejects a missing or empty timeout" {
+  run pm_await_all --timeout
+  assert_failure
+  assert_output "Missing value for --timeout"
+
+  run pm_await_all --timeout "" 1234
+  assert_failure
+  assert_output "Missing value for --timeout"
+}
+
+@test "await all stops when awaiting a process fails" {
+  pm_await() { echo "$1"; return 1; }
+
+  run pm_await_all 1234 5678
+  assert_failure
+  assert_output "1234"
+}
+
 @test "should allow awaiting for a process" {
   job() {
     sleep 0.1
