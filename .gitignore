@@ -1,2 +1,4 @@
 outputs
 *.log
+/test_failures/
+/test_outputs/

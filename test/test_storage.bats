@@ -9,22 +9,34 @@ setup() {
 
   pm_set_outputs "${TEST_OUTPUTS}/pm"
   cdx_set_outputs "${TEST_OUTPUTS}/storage"
+  expected_bootstrap=""
+  if [[ "$("${_cdx_binary}" --help)" == *--no-bootstrap-node* ]]; then
+    expected_bootstrap=" --no-bootstrap-node"
+  fi
+  expected_discovery=""
+  if [[ "$("${_cdx_binary}" --help)" == *--disc-port* ]]; then
+    expected_discovery=" --disc-port=$(net_port storage discovery 0)"
+  fi
 }
 
 @test "should generate the correct Logos Storage command line for node 0" {
   # shellcheck disable=SC2140
   assert_equal "$(cdx_cmdline 0)" "${_cdx_binary} --nat=extip:127.0.0.1 --listen-ip=127.0.0.1"\
-" --no-bootstrap-node"\
+"${expected_bootstrap}"\
 " --data-dir=${_cdx_output}/data/storage-0"\
-" --api-port=$(net_port 'storage' 'api' 0) --listen-port=$(net_port 'storage' 'listen' 0) --log-level=INFO"
+" --api-port=$(net_port 'storage' 'api' 0) --listen-port=$(net_port 'storage' 'listen' 0) --log-level=INFO${expected_discovery}"
 }
 
 @test "should generate the correct Logos Storage command line for node 1" {
+  local expected_node1_discovery=""
+  if [[ -n "$expected_discovery" ]]; then
+    expected_node1_discovery=" --disc-port=$(net_port storage discovery 1)"
+  fi
   # shellcheck disable=SC2140
   assert_equal "$(cdx_cmdline 1 '--bootstrap-node' 'node-spr')" "${_cdx_binary} --nat=extip:127.0.0.1 --listen-ip=127.0.0.1"\
 " --bootstrap-node=node-spr"\
 " --data-dir=${_cdx_output}/data/storage-1"\
-" --api-port=$(net_port 'storage' 'api' 1) --listen-port=$(net_port 'storage' 'listen' 1) --log-level=INFO"
+" --api-port=$(net_port 'storage' 'api' 1) --listen-port=$(net_port 'storage' 'listen' 1) --log-level=INFO${expected_node1_discovery}"
 }
 
 @test "should refuse to generate the command line for node > 0 if no SPR is provided" {
@@ -36,9 +48,9 @@ setup() {
   # shellcheck disable=SC2140
   assert_equal "$(cdx_cmdline 0 --metrics)" "${_cdx_binary} --nat=extip:127.0.0.1 --listen-ip=127.0.0.1"\
 " --metrics --metrics-port=$(net_port 'storage' 'metrics' 0) --metrics-address=0.0.0.0"\
-" --no-bootstrap-node"\
+"${expected_bootstrap}"\
 " --data-dir=${_cdx_output}/data/storage-0"\
-" --api-port=$(net_port 'storage' 'api' 0) --listen-port=$(net_port 'storage' 'listen' 0) --log-level=INFO"
+" --api-port=$(net_port 'storage' 'api' 0) --listen-port=$(net_port 'storage' 'listen' 0) --log-level=INFO${expected_discovery}"
 }
 
 @test "should modify the Logos Storage log-level when specified" {
@@ -46,9 +58,9 @@ setup() {
 
   # shellcheck disable=SC2140
   assert_equal "$(cdx_cmdline 0)" "${_cdx_binary} --nat=extip:127.0.0.1 --listen-ip=127.0.0.1"\
-" --no-bootstrap-node"\
+"${expected_bootstrap}"\
 " --data-dir=${_cdx_output}/data/storage-0"\
-" --api-port=$(net_port 'storage' 'api' 0) --listen-port=$(net_port 'storage' 'listen' 0) --log-level=DEBUG"
+" --api-port=$(net_port 'storage' 'api' 0) --listen-port=$(net_port 'storage' 'listen' 0) --log-level=DEBUG${expected_discovery}"
 }
 
 @test "should allow setting of global default options" {
@@ -68,15 +80,10 @@ setup() {
 }
 
 @test "should pass readiness check if node is running" {
-  data_dir="${TEST_OUTPUTS}/storage-temp"
-  "${_cdx_binary}" --api-port=$(net_port 'storage' 'api' 0) --nat=extip:127.0.0.1 --data-dir="$data_dir" &> /dev/null &
-  pid=$!
-
+  pm_start
+  assert cdx_launch_node 0
   assert cdx_ensure_ready 0 3
-
-  kill -SIGKILL "$pid"
-  pm_await "$pid"
-  rm -rf "$data_dir"
+  pm_stop
 }
 
 @test "should launch a Logos Storage node" {
@@ -279,5 +286,41 @@ setup() {
 }
 
 teardown() {
+  # Bats skips the rest of a test after a failed assertion.
+  if pm_is_running; then
+    pm_stop
+  fi
+  if [[ "${BATS_TEST_COMPLETED:-}" != 1 && -d "${_cdx_logs}" ]]; then
+    local destination="${BATS_TEST_DIRNAME}/../test_failures/storage-${BATS_TEST_NUMBER}"
+    mkdir -p "$destination"
+    cp -a "${_cdx_logs}/." "$destination/"
+    echo "Storage failure logs retained in $destination" >&2
+  fi
   clean_outputs
+}
+
+@test "should omit legacy discovery option for a current binary" {
+  _cdx_binary="${BATS_TEST_TMPDIR}/storage-current"
+  printf '#!/bin/sh\nprintf "%%s\n" --listen-port\n' > "$_cdx_binary"
+  chmod +x "$_cdx_binary"
+  run cdx_cmdline 0
+  assert_success
+  refute_output --partial -- '--disc-port'
+}
+
+@test "should allocate distinct discovery ports for release nodes and relays" {
+  _cdx_binary="${BATS_TEST_TMPDIR}/storage-release"
+  printf '#!/bin/sh\nprintf "%%s\n" --disc-port\n' > "$_cdx_binary"
+  chmod +x "$_cdx_binary"
+  assert_not_equal "$(_cdx_discovery_option storage 0)" "$(_cdx_discovery_option storage 1)"
+  assert_not_equal "$(_cdx_discovery_option storage 0)" "$(_cdx_discovery_option relay 0)"
+  run cdx_cmdline 1 --bootstrap-node node-spr
+  assert_success
+  assert_output --partial -- "--disc-port=$(net_port storage discovery 1)"
+}
+
+@test "should propagate failure to inspect the selected binary" {
+  _cdx_binary=/bin/false
+  run cdx_cmdline 0
+  assert_failure
 }

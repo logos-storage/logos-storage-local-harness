@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# shellcheck disable=SC2128,SC2317
+# shellcheck disable=SC2128,SC2317,SC2329
 setup() {
   load test_helper/common_setup
   common_setup
@@ -155,6 +155,9 @@ setup() {
   pm_async job
   p2=$result
 
+  # pm_async returns before its child has necessarily registered the PID.
+  assert await 3 test -f "${_pm_output}/${p1}.pid"
+  assert await 3 test -f "${_pm_output}/${p2}.pid"
   pm_known_pids
   assert [ ${#result[@]} -eq 2 ]
 
@@ -163,10 +166,8 @@ setup() {
   pm_await "$p1"
   pm_await "$p2"
 
-  # This should be more than enough for the process monitor to
-  # catch the exits. The alternative would be implementing temporal
-  # predicates.
-  sleep 1
+  assert await 3 test ! -f "${_pm_output}/${p1}.pid"
+  assert await 3 test ! -f "${_pm_output}/${p2}.pid"
 
   pm_known_pids
   assert [ ${#result[@]} -eq 0 ]
@@ -311,4 +312,10 @@ callback() {
   assert_equal "$(cat "${_pm_output}/${pid}-sleepy-exit-args")" "arg1 arg2"
 
   pm_stop
+}
+
+teardown() {
+  if pm_is_running; then
+    pm_stop
+  fi
 }

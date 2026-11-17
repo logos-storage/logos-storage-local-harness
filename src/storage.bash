@@ -16,6 +16,9 @@ net_declare "storage" 200
 net_declare "relay" 100
 net_decl_ports "storage" "api" "listen" "metrics"
 net_decl_ports "relay" "api" "listen" "metrics"
+# Append legacy UDP discovery ranges without changing existing port assignments.
+net_decl_port "storage" "discovery"
+net_decl_port "relay" "discovery"
 
 # Minimum size for a mix pool
 _cdx_mix_min_pool=4
@@ -32,6 +35,17 @@ _cdx_relay_log_level="INFO"
 echoerr "[storage] Node log level is ${_cdx_log_level}"
 echoerr "[storage] Relay log level is ${_cdx_relay_log_level}"
 
+# Older Storage releases use a separate UDP discovery listener. Newer builds
+# removed this option, so inspect the selected binary rather than its version.
+_cdx_discovery_option() {
+  local network="$1" node_index="$2" help_text port
+  help_text=$("${_cdx_binary}" --help) || return 1
+  if [[ "$help_text" == *--disc-port* ]]; then
+    port=$(net_port "$network" discovery "$node_index") || return 1
+    printf '%s' "--disc-port=${port}"
+  fi
+}
+
 cdx_generate_mix_pool() {
   local pool_size="$1" pool_dir="$2" binary
   require_binary "binary" "mix_pool" "MIX_POOL_BINARY" || return 1
@@ -46,7 +60,7 @@ cdx_generate_mix_pool() {
 
 cdx_launch_relay() {
   local relay_index="$1" bootstrap_spr="${2:-}" binary quoted_log_file
-  local backend="${CDX_MIX_RELAY_BACKEND:-standalone}"
+  local backend="${CDX_MIX_RELAY_BACKEND:-standalone}" discovery_option
   local -a cmd_args
 
   if [ -z "${CDX_MIX_POOL_DIR:-}" ]; then
@@ -79,6 +93,8 @@ cdx_launch_relay() {
       ;;
     storage)
       binary="${_cdx_binary}"
+      discovery_option=$(_cdx_discovery_option relay "$relay_index") || return 1
+      [[ -z "$discovery_option" ]] || cmd_args+=("$discovery_option")
       cmd_args+=(
         "--nat=extip:127.0.0.1"
         "--api-port=$(net_port 'relay' 'api' "${relay_index}")"
@@ -153,7 +169,7 @@ cdx_set_relay_log_level() {
 }
 
 cdx_cmdline() {
-  local node_index spr="" opt cmd
+  local node_index spr="" opt cmd discovery_option help_text
   local -a opts=("$@")
   local -a cmd_args=(
     "${_cdx_binary}"
@@ -196,7 +212,10 @@ cdx_cmdline() {
   # FIXME I'm conventioning that node 0 is bootstrap, but this needs to be
   #   enforced properly.
   if [[ "$node_index" -eq 0 ]]; then
-    cmd_args+=("--no-bootstrap-node")
+    help_text=$("${_cdx_binary}" --help) || return 1
+    if [[ "$help_text" == *--no-bootstrap-node* ]]; then
+      cmd_args+=("--no-bootstrap-node")
+    fi
   elif [[ -z "$spr" ]]; then
     echoerr "Error: SPR is required for node ${node_index}"
     return 1
@@ -220,6 +239,9 @@ cdx_cmdline() {
     "--log-level=${_cdx_log_level}"
   )
 
+  discovery_option=$(_cdx_discovery_option storage "$node_index") || return 1
+  [[ -z "$discovery_option" ]] || cmd_args+=("$discovery_option")
+
   printf -v cmd '%q ' "${cmd_args[@]}"
   printf '%s\n' "${cmd% }"
 }
@@ -235,7 +257,7 @@ cdx_launch_node() {
   printf -v quoted_log_file '%q' "${log_file}"
 
   pm_async "bash" "-c" "exec ${storage_cmd} &> ${quoted_log_file}" \
-    -%- "storage" "${node_index}"
+    -%- "storage" "${node_index}" || return 1
 
   cdx_ensure_ready "$node_index"
 }
