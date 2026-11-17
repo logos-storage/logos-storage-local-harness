@@ -251,9 +251,22 @@ pm_await() {
   return 0
 }
 
+# Usage: pm_await_all [--timeout <seconds|Inf>] <pid>...
+# The timeout applies separately to each process.
 pm_await_all() {
-  local pids=("$@") timeout=${2:-30}
-  for pid in "${pids[@]}"; do
+  local timeout=30
+
+  if [[ "${1:-}" == "--timeout" ]]; then
+    if [[ $# -lt 2 || -z "$2" ]]; then
+      echoerr "Missing value for --timeout"
+      return 1
+    fi
+    timeout="$2"
+    shift 2
+  fi
+
+  local pid
+  for pid in "$@"; do
     pm_await "$pid" "$timeout" || return 1
   done
 }

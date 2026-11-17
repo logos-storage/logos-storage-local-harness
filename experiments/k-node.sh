@@ -135,7 +135,7 @@ for file_size in "${cfg_file_sizes[@]}"; do
       handles+=("$result")
     done
 
-    pm_await_all "${handles[@]}" "Inf"
+    pm_await_all --timeout Inf "${handles[@]}"
 
     cdx_log_timings_end
 
@@ -200,7 +200,7 @@ for file_size in "${cfg_file_sizes[@]}"; do
         echoerr "Peer-to-peer ratio: $p2p_ratio% of blocks served by leechers"
       fi
     else
-      echoerr "No peer-to-peer detected (seeder served all or more blocks)"
+      echoerr "Seeder(s) served at least the expected block count for all downloads; no reduction in seeder workload was observed."
     fi
     echoerr "=== End blocks served analysis ==="
   done
